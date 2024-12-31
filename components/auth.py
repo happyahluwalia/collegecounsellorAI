@@ -36,7 +36,7 @@ def login_page():
             name="Demo User"
         ).create()
         st.session_state.user = mock_user
-        st.experimental_rerun()
+        st.rerun()
 
     # Keep the Google OAuth button for later implementation
     st.button("Sign in with Google", disabled=True)
@@ -63,7 +63,7 @@ def handle_oauth_callback():
                        name=user_info['name']).create()
 
         st.session_state.user = user
-        st.experimental_rerun()
+        st.rerun()
 
 def get_user_info(credentials):
     # Mock implementation for now
