@@ -2,6 +2,7 @@ import logging
 from openai import OpenAI
 from utils.error_handling import AppError, log_error
 import time
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -30,16 +31,20 @@ class CounselorAgent:
         their strengths and find colleges where they can thrive.
         """
 
-    def _make_api_call(self, messages, temperature=0.7):
+    def _make_api_call(self, messages, temperature=0.7, response_format=None):
         """Make OpenAI API call with retry mechanism"""
         retry_count = 0
         while retry_count < self.MAX_RETRIES:
             try:
-                response = self.client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=messages,
-                    temperature=temperature
-                )
+                completion_params = {
+                    "model": "gpt-3.5-turbo",
+                    "messages": messages,
+                    "temperature": temperature
+                }
+                if response_format:
+                    completion_params["response_format"] = response_format
+
+                response = self.client.chat.completions.create(**completion_params)
                 return response.choices[0].message.content
             except Exception as e:
                 retry_count += 1
@@ -53,27 +58,8 @@ class CounselorAgent:
         """Generate a response to the user's message."""
         try:
             logger.info("Generating counselor response")
-            # Include relevant context in the prompt
-            context_str = ""
-            if context and context.get("profile"):
-                profile = context["profile"]
-                context_str = f"""
-                Student Profile:
-                - GPA: {profile.get('gpa', 'Not provided')}
-                - Interests: {', '.join(profile.get('interests', []))}
-                - Activities: {', '.join(profile.get('activities', []))}
-                - Target Majors: {', '.join(profile.get('target_majors', []))}
-                """
-
-            messages = [
-                {"role": "system", "content": self.system_prompt}
-            ]
-
-            if context_str:
-                messages.append({"role": "system", "content": context_str})
-
-            messages.append({"role": "user", "content": message})
-
+            context_str = self._build_context_string(context)
+            messages = self._build_messages(message, context_str)
             response = self._make_api_call(messages)
             logger.info("Successfully generated counselor response")
             return response
@@ -81,28 +67,74 @@ class CounselorAgent:
             logger.error(f"Error generating response: {str(e)}")
             raise APIError("Unable to generate response. Please try again later.")
 
-    def generate_college_list(self, profile):
-        """Generate personalized college recommendations."""
-        try:
-            logger.info("Generating college recommendations")
-            prompt = f"""
-            Based on the following student profile, suggest 5-7 colleges that would be good fits:
+    def _build_context_string(self, context):
+        """Build context string from user profile"""
+        if not context or not context.get("profile"):
+            return ""
 
-            Profile:
+        profile = context["profile"]
+        return f"""
+        Student Profile:
+        - GPA: {profile.get('gpa', 'Not provided')}
+        - Interests: {', '.join(profile.get('interests', []))}
+        - Activities: {', '.join(profile.get('activities', []))}
+        - Target Majors: {', '.join(profile.get('target_majors', []))}
+        """
+
+    def _build_messages(self, message, context_str=""):
+        """Build messages array for API call"""
+        messages = [{"role": "system", "content": self.system_prompt}]
+        if context_str:
+            messages.append({"role": "system", "content": context_str})
+        messages.append({"role": "user", "content": message})
+        return messages
+
+    def generate_college_matches(self, profile, limit=10):
+        """Generate personalized college recommendations with detailed matching criteria."""
+        try:
+            logger.info("Generating personalized college matches")
+            prompt = f"""
+            Based on this student's profile, recommend {limit} best-fit colleges. 
+            Provide a structured analysis in JSON format with the following schema:
+            {{
+                "colleges": [
+                    {{
+                        "name": "College Name",
+                        "match_score": float (0-1),
+                        "academic_fit": string,
+                        "program_strengths": [strings],
+                        "extracurricular_matches": [strings],
+                        "admission_stats": {{
+                            "acceptance_rate": float,
+                            "gpa_range": {{
+                                "min": float,
+                                "max": float
+                            }}
+                        }},
+                        "why_good_fit": string
+                    }}
+                ]
+            }}
+
+            Student Profile:
             - GPA: {profile.get('gpa', 'Not provided')}
             - Interests: {', '.join(profile.get('interests', []))}
             - Activities: {', '.join(profile.get('activities', []))}
             - Target Majors: {', '.join(profile.get('target_majors', []))}
-
-            For each college, please provide:
-            1. Why it's a good academic fit
-            2. Notable programs matching the student's interests
-            3. Relevant extracurricular opportunities
-            4. Approximate acceptance rate and middle 50% GPA range
             """
-            return self._make_api_call([{"role": "user", "content": prompt}])
+
+            response = self._make_api_call(
+                [{"role": "user", "content": prompt}],
+                temperature=0.7,
+                response_format={"type": "json_object"}
+            )
+
+            # Parse and validate the response
+            recommendations = json.loads(response)
+            logger.info(f"Generated {len(recommendations.get('colleges', []))} college matches")
+            return recommendations
         except Exception as e:
-            logger.error(f"Error generating college list: {str(e)}")
+            logger.error(f"Error generating college matches: {str(e)}")
             raise APIError("Unable to generate college recommendations. Please try again later.")
 
     def suggest_improvements(self, profile):
@@ -118,13 +150,20 @@ class CounselorAgent:
             - Activities: {', '.join(profile.get('activities', []))}
             - Target Majors: {', '.join(profile.get('target_majors', []))}
 
-            Please provide actionable recommendations for:
-            1. Academic improvements
-            2. Extracurricular activities
-            3. Test preparation
-            4. Personal projects or initiatives
+            Provide recommendations in JSON format:
+            {{
+                "academic_improvements": [string],
+                "extracurricular_suggestions": [string],
+                "test_prep_recommendations": [string],
+                "personal_projects": [string],
+                "priority_level": string
+            }}
             """
-            return self._make_api_call([{"role": "user", "content": prompt}], temperature=0.8)
+            return self._make_api_call(
+                [{"role": "user", "content": prompt}],
+                temperature=0.8,
+                response_format={"type": "json_object"}
+            )
         except Exception as e:
             logger.error(f"Error generating improvement suggestions: {str(e)}")
             raise APIError("Unable to generate improvement suggestions. Please try again later.")

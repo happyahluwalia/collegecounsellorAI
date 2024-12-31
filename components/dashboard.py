@@ -2,6 +2,7 @@ import streamlit as st
 from components.profile import render_profile
 from components.chat import render_chat, new_chat_session, load_chat_session
 from components.achievements import render_achievements
+from components.college_matches import render_college_matches
 from models.achievement import Achievement
 from utils.error_handling import handle_error, DatabaseError
 import logging
@@ -43,12 +44,15 @@ def render_dashboard():
                 st.error("Unable to load chat history")
 
     with col2:
-        tab1, tab2 = st.tabs(["Chat", "Profile"])
+        tab1, tab2, tab3 = st.tabs(["Chat", "College Matches", "Profile"])
 
         with tab1:
             render_chat()
 
         with tab2:
+            render_college_matches()
+
+        with tab3:
             render_profile()
 
     with col3:
