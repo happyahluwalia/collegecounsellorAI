@@ -11,4 +11,5 @@ dependencies = [
     "langgraph>=0.2.60",
     "psycopg2-binary>=2.9.10",
     "streamlit>=1.41.1",
+    "openai>=1.58.1",
 ]

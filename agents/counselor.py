@@ -1,15 +1,9 @@
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_community.chat_models import ChatOpenAI
-from langgraph.graph import END, Graph
+from openai import OpenAI
 import os
 
 class CounselorAgent:
     def __init__(self):
-        self.llm = ChatOpenAI(
-            temperature=0.7,
-            model="gpt-3.5-turbo"
-        )
+        self.client = OpenAI()
         self.system_prompt = """
         You are an experienced college admissions counselor with expertise in guiding high school students 
         through their college application journey. Your role is to:
@@ -25,70 +19,35 @@ class CounselorAgent:
         their strengths and find colleges where they can thrive.
         """
 
-    def create_workflow(self):
-        workflow = Graph()
-
-        @workflow.node()
-        def process_input(state):
-            """Process the user's input and generate a response."""
-            message = state["message"]
-            context = state.get("context", {})
-
-            # Include relevant context in the prompt
-            context_str = ""
-            if context.get("profile"):
-                profile = context["profile"]
-                context_str = f"""
-                Student Profile:
-                - GPA: {profile.get('gpa', 'Not provided')}
-                - Interests: {', '.join(profile.get('interests', []))}
-                - Activities: {', '.join(profile.get('activities', []))}
-                - Target Majors: {', '.join(profile.get('target_majors', []))}
-                """
-
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", self.system_prompt),
-                ("system", context_str),
-                ("human", "{input}")
-            ])
-
-            chain = prompt | self.llm
-            response = chain.invoke({"input": message})
-
-            return {
-                "response": response.content,
-                "context": context,
-                "next": "validate"
-            }
-
-        @workflow.node()
-        def validate(state):
-            """Validate the response for accuracy and helpfulness."""
-            response = state["response"]
-
-            # Basic validation checks
-            if len(response) < 50:
-                response += "\nWould you like me to elaborate on any specific aspect?"
-
-            return {
-                "response": response,
-                "context": state["context"],
-                "next": END
-            }
-
-        workflow.set_entry_point("process_input")
-        workflow.add_edge("process_input", "validate")
-
-        return workflow
-
     def get_response(self, message, context=None):
         """Generate a response to the user's message."""
-        workflow = self.create_workflow()
-        result = workflow.invoke({
-            "message": message,
-            "context": context or {}
-        })
-        return result["response"]
+        # Include relevant context in the prompt
+        context_str = ""
+        if context and context.get("profile"):
+            profile = context["profile"]
+            context_str = f"""
+            Student Profile:
+            - GPA: {profile.get('gpa', 'Not provided')}
+            - Interests: {', '.join(profile.get('interests', []))}
+            - Activities: {', '.join(profile.get('activities', []))}
+            - Target Majors: {', '.join(profile.get('target_majors', []))}
+            """
+
+        messages = [
+            {"role": "system", "content": self.system_prompt}
+        ]
+
+        if context_str:
+            messages.append({"role": "system", "content": context_str})
+
+        messages.append({"role": "user", "content": message})
+
+        response = self.client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            temperature=0.7
+        )
+        return response.choices[0].message.content
 
     def generate_college_list(self, profile):
         """Generate personalized college recommendations."""
