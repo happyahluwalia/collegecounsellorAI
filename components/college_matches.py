@@ -95,7 +95,7 @@ def render_college_matches():
                     'colleges': matches['colleges']
                 }
 
-                # Cache the new matches with metadata
+                # Store cache data as JSON string
                 db.execute("""
                     INSERT INTO college_matches (user_id, matches)
                     VALUES (%s, %s)
