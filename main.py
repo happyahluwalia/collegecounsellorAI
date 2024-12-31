@@ -19,9 +19,9 @@ init_auth()
 
 def main():
     # Handle OAuth callback if present
-    if 'code' in st.experimental_get_query_params():
+    if 'code' in st.query_params:
         handle_oauth_callback()
-    
+
     # Show login page or dashboard based on authentication status
     if not st.session_state.user:
         login_page()

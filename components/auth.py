@@ -42,8 +42,9 @@ def login_page():
                    unsafe_allow_html=True)
 
 def handle_oauth_callback():
-    if 'code' in st.experimental_get_query_params():
-        code = st.experimental_get_query_params()['code'][0]
+    query_params = st.query_params
+    if 'code' in query_params:
+        code = query_params['code']
         flow = Flow.from_client_secrets_file(
             'client_secrets.json',
             scopes=['https://www.googleapis.com/auth/userinfo.email'],
@@ -51,16 +52,16 @@ def handle_oauth_callback():
         )
         flow.fetch_token(code=code)
         credentials = flow.credentials
-        
+
         # Get user info from Google
         user_info = get_user_info(credentials)
-        
+
         # Create or get user
         user = User.get_by_email(user_info['email'])
         if not user:
             user = User(email=user_info['email'], 
                        name=user_info['name']).create()
-        
+
         st.session_state.user = user
         st.experimental_rerun()
 
