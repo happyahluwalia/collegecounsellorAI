@@ -28,6 +28,11 @@ class ValidationError(AppError):
     def __init__(self, message: str):
         super().__init__(message, "Validation Error")
 
+class APIError(AppError):
+    """API related errors"""
+    def __init__(self, message: str):
+        super().__init__(message, "API Error")
+
 def handle_error(func: Callable) -> Callable:
     """Decorator for handling errors in Streamlit pages and components"""
     @wraps(func)
@@ -41,6 +46,10 @@ def handle_error(func: Callable) -> Callable:
         except ValidationError as e:
             logger.warning(f"Validation error in {func.__name__}: {str(e)}")
             st.warning(f"⚠️ {e.message}")
+        except APIError as e:
+            logger.error(f"API error in {func.__name__}: {str(e)}")
+            logger.debug(traceback.format_exc())
+            st.error(f"🔌 {e.message}")
         except Exception as e:
             logger.critical(f"Unexpected error in {func.__name__}: {str(e)}")
             logger.debug(traceback.format_exc())
