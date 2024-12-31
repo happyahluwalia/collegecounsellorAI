@@ -30,12 +30,15 @@ def login_page():
 
     # Add temporary direct access button
     if st.button("🎓 Enter as Demo User"):
-        # Create a mock user session
-        mock_user = User(
-            email="demo@example.com",
-            name="Demo User"
-        ).create()
-        st.session_state.user = mock_user
+        # Try to get existing demo user first
+        demo_user = User.get_by_email("demo@example.com")
+        if not demo_user:
+            # Create a new demo user if one doesn't exist
+            demo_user = User(
+                email="demo@example.com",
+                name="Demo User"
+            ).create()
+        st.session_state.user = demo_user
         st.rerun()
 
     # Keep the Google OAuth button for later implementation
