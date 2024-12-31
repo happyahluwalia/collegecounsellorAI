@@ -27,7 +27,7 @@ class Database:
                     name VARCHAR(255) NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
-                
+
                 CREATE TABLE IF NOT EXISTS profiles (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER REFERENCES users(id),
@@ -38,14 +38,14 @@ class Database:
                     target_schools TEXT[],
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
-                
+
                 CREATE TABLE IF NOT EXISTS chat_sessions (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER REFERENCES users(id),
                     title VARCHAR(255),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
-                
+
                 CREATE TABLE IF NOT EXISTS messages (
                     id SERIAL PRIMARY KEY,
                     session_id INTEGER REFERENCES chat_sessions(id),
@@ -57,11 +57,21 @@ class Database:
             self.conn.commit()
 
     def execute(self, query, params=None):
+        """Execute a query and return results if it's a SELECT query"""
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params or ())
-            return cur.fetchall()
+            # Check if the query is a SELECT query
+            if query.strip().upper().startswith('SELECT'):
+                return cur.fetchall()
+            else:
+                self.conn.commit()
+                return []
 
     def execute_one(self, query, params=None):
+        """Execute a query and return a single result"""
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params or ())
-            return cur.fetchone()
+            result = cur.fetchone()
+            if not query.strip().upper().startswith('SELECT'):
+                self.conn.commit()
+            return result
