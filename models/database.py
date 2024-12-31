@@ -87,6 +87,28 @@ class Database:
                         role VARCHAR(50),
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
+
+                    CREATE TABLE IF NOT EXISTS achievements (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        description TEXT NOT NULL,
+                        icon_name VARCHAR(100) NOT NULL,
+                        points INTEGER DEFAULT 0,
+                        category VARCHAR(50) NOT NULL,
+                        requirements JSONB NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS user_achievements (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER REFERENCES users(id),
+                        achievement_id INTEGER REFERENCES achievements(id),
+                        progress JSONB NOT NULL DEFAULT '{}',
+                        completed BOOLEAN DEFAULT FALSE,
+                        completed_at TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(user_id, achievement_id)
+                    );
                 """)
                 self.conn.commit()
                 logger.info("Database tables created/verified successfully")

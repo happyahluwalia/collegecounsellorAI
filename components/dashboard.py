@@ -1,6 +1,8 @@
 import streamlit as st
 from components.profile import render_profile
 from components.chat import render_chat, new_chat_session, load_chat_session
+from components.achievements import render_achievements
+from models.achievement import Achievement
 from utils.error_handling import handle_error, DatabaseError
 import logging
 
@@ -10,6 +12,13 @@ logger = logging.getLogger(__name__)
 def render_dashboard():
     """Renders the main dashboard interface of the College Compass application."""
     st.title("College Compass Dashboard")
+
+    try:
+        # Initialize achievements if needed
+        Achievement.initialize_default_achievements()
+    except DatabaseError as e:
+        logger.error(f"Failed to initialize achievements: {str(e)}")
+        st.error("System initialization error. Please try again later.")
 
     # Create three columns for the layout
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -43,24 +52,8 @@ def render_dashboard():
             render_profile()
 
     with col3:
-        st.subheader("Progress Tracker")
-
-        # Progress bars
-        st.progress(0.7, "Profile Completion")
-        st.progress(0.3, "College List")
-        st.progress(0.5, "Essay Planning")
-
-        # Upcoming Tasks
-        st.subheader("Upcoming Tasks")
-        tasks = [
-            "Complete profile information",
-            "Research target schools",
-            "Draft personal statement",
-            "Prepare activity list"
-        ]
-
-        for task in tasks:
-            st.checkbox(task, key=f"task_{task}")
+        # Render achievements panel
+        render_achievements()
 
 # Make sure the function is properly exported
 __all__ = ['render_dashboard']
