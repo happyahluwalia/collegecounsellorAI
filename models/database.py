@@ -54,7 +54,19 @@ class Database:
         """Create database tables if they don't exist"""
         try:
             with self.conn.cursor() as cur:
+                # Create achievements table with unique name constraint
                 cur.execute("""
+                    CREATE TABLE IF NOT EXISTS achievements (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL UNIQUE,
+                        description TEXT NOT NULL,
+                        icon_name VARCHAR(100) NOT NULL,
+                        points INTEGER DEFAULT 0,
+                        category VARCHAR(50) NOT NULL,
+                        requirements JSONB NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+
                     CREATE TABLE IF NOT EXISTS users (
                         id SERIAL PRIMARY KEY,
                         email VARCHAR(255) UNIQUE NOT NULL,
@@ -88,17 +100,6 @@ class Database:
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
 
-                    CREATE TABLE IF NOT EXISTS achievements (
-                        id SERIAL PRIMARY KEY,
-                        name VARCHAR(255) NOT NULL,
-                        description TEXT NOT NULL,
-                        icon_name VARCHAR(100) NOT NULL,
-                        points INTEGER DEFAULT 0,
-                        category VARCHAR(50) NOT NULL,
-                        requirements JSONB NOT NULL,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    );
-
                     CREATE TABLE IF NOT EXISTS user_achievements (
                         id SERIAL PRIMARY KEY,
                         user_id INTEGER REFERENCES users(id),
@@ -108,6 +109,14 @@ class Database:
                         completed_at TIMESTAMP,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         UNIQUE(user_id, achievement_id)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS college_matches (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER REFERENCES users(id),
+                        matches JSONB NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
                 self.conn.commit()
