@@ -1,6 +1,6 @@
-from langchain.chat_models import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema import SystemMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import SystemMessage, HumanMessage
+from langchain.chat_models.openai import ChatOpenAI
 from langgraph.graph import END, Graph
 
 class CounselorAgent:
@@ -33,7 +33,7 @@ class CounselorAgent:
 
         workflow.set_entry_point("process_input")
         workflow.add_edge("process_input", "validate")
-        
+
         return workflow
 
     def get_response(self, message, context=None):
@@ -48,7 +48,7 @@ class CounselorAgent:
         Interests: {', '.join(profile.get('interests', []))}
         Activities: {', '.join(profile.get('activities', []))}
         Target Majors: {', '.join(profile.get('target_majors', []))}
-        
+
         For each college, explain why it would be a good fit.
         """
         return self.get_response(prompt)
