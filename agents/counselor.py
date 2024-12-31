@@ -129,10 +129,12 @@ class CounselorAgent:
                 response_format={"type": "json_object"}
             )
 
-            # Parse and validate the response
+            # Validate and serialize the response
             recommendations = json.loads(response)
+            recommendations_json = json.dumps(recommendations)
             logger.info(f"Generated {len(recommendations.get('colleges', []))} college matches")
-            return recommendations
+            return recommendations_json  # Return JSON string instead of dict
+
         except Exception as e:
             logger.error(f"Error generating college matches: {str(e)}")
             raise APIError("Unable to generate college recommendations. Please try again later.")

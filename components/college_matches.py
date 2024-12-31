@@ -3,6 +3,7 @@ from agents.counselor import CounselorAgent
 from utils.error_handling import handle_error, APIError, DatabaseError
 from datetime import datetime, timedelta
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -43,17 +44,19 @@ def render_college_matches():
         if not cached_matches or force_refresh:
             with st.spinner("Generating personalized college matches..."):
                 counselor = CounselorAgent()
-                matches = counselor.generate_college_matches(profile)
+                matches_json = counselor.generate_college_matches(profile)
 
-                # Cache the new matches
+                # Cache the new matches (matches_json is already a JSON string)
                 db.execute("""
                     INSERT INTO college_matches (user_id, matches)
                     VALUES (%s, %s)
-                """, (st.session_state.user.id, matches))
+                """, (st.session_state.user.id, matches_json))
 
+                matches = json.loads(matches_json)
                 logger.info(f"Generated and cached new college matches for user {st.session_state.user.id}")
         else:
-            matches = cached_matches['matches']
+            # Parse the cached JSON string
+            matches = json.loads(cached_matches['matches'])
             st.caption(f"Last updated: {cached_matches['updated_at'].strftime('%Y-%m-%d %H:%M')}")
 
         # Display college matches
