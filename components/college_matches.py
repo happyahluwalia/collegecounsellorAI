@@ -3,6 +3,7 @@ from agents.counselor import CounselorAgent
 from utils.error_handling import handle_error, APIError, DatabaseError
 import logging
 import json
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -30,33 +31,53 @@ def render_college_matches():
         with col2:
             force_refresh = st.button("🔄 Refresh Matches")
 
-        # Check for cached matches
-        cached_record = None if force_refresh else db.execute_one("""
-            SELECT matches, updated_at 
-            FROM college_matches 
-            WHERE user_id = %s 
-            ORDER BY updated_at DESC 
-            LIMIT 1
-        """, (st.session_state.user.id,))
-
         try:
+            # Check for cached matches
+            cached_record = None if force_refresh else db.execute_one("""
+                SELECT matches, updated_at 
+                FROM college_matches 
+                WHERE user_id = %s 
+                ORDER BY updated_at DESC 
+                LIMIT 1
+            """, (st.session_state.user.id,))
+
             # Generate new matches if needed
             if not cached_record or force_refresh:
                 with st.spinner("Generating personalized college matches..."):
                     counselor = CounselorAgent()
                     matches_json = counselor.generate_college_matches(profile)
-                    matches = json.loads(matches_json)
 
-                    # Store in database
-                    db.execute("""
-                        INSERT INTO college_matches (user_id, matches)
-                        VALUES (%s, %s)
-                    """, (st.session_state.user.id, matches_json))
+                    # Validate JSON structure before storing
+                    try:
+                        matches = json.loads(matches_json)
+                        if not isinstance(matches, dict) or 'colleges' not in matches:
+                            raise ValueError("Invalid matches structure")
 
-                    logger.info(f"Generated and cached new college matches for user {st.session_state.user.id}")
+                        # Store in database
+                        db.execute("""
+                            INSERT INTO college_matches (user_id, matches)
+                            VALUES (%s, %s)
+                        """, (st.session_state.user.id, matches_json))
+
+                        logger.info(f"Generated and cached new college matches for user {st.session_state.user.id}")
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Invalid JSON from counselor: {str(e)}")
+                        raise APIError("Error processing college recommendations")
+                    except ValueError as e:
+                        logger.error(f"Invalid matches structure: {str(e)}")
+                        raise APIError("Invalid college recommendations format")
             else:
-                matches = json.loads(cached_record['matches'])
-                st.caption(f"Last updated: {cached_record['updated_at'].strftime('%Y-%m-%d %H:%M')}")
+                try:
+                    # Load and validate cached matches
+                    matches = json.loads(cached_record['matches'])
+                    if not isinstance(matches, dict) or 'colleges' not in matches:
+                        logger.error("Invalid cached matches structure")
+                        raise ValueError("Invalid cached data structure")
+
+                    st.caption(f"Last updated: {cached_record['updated_at'].strftime('%Y-%m-%d %H:%M')}")
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.error(f"Error loading cached matches: {str(e)}")
+                    raise DatabaseError("Error loading cached recommendations")
 
             # Display college matches
             for college in matches.get('colleges', []):
@@ -86,19 +107,18 @@ def render_college_matches():
 
             logger.info(f"Displayed college matches for user {st.session_state.user.id}")
 
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON parsing error: {str(e)}")
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"JSON structure error: {str(e)}")
             st.error("Error processing college matches data")
-            return
+        except APIError as e:
+            logger.error(f"API error: {str(e)}")
+            st.error(str(e))
+        except DatabaseError as e:
+            logger.error(f"Database error: {str(e)}")
+            st.error(str(e))
 
-    except APIError as e:
-        logger.error(f"API error while generating college matches: {str(e)}")
-        st.error("😕 Unable to generate college matches at the moment. Please try again later.")
-    except DatabaseError as e:
-        logger.error(f"Database error while handling college matches: {str(e)}")
-        st.error("Unable to retrieve college matches. Please try again later.")
     except Exception as e:
-        logger.error(f"Error displaying college matches: {str(e)}")
+        logger.error(f"Unexpected error in college matches: {str(e)}")
         st.error("Something went wrong while displaying college matches.")
 
 if __name__ == "__main__":
