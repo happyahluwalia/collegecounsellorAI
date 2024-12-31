@@ -20,7 +20,10 @@ class Database:
 
     def create_tables(self):
         with self.conn.cursor() as cur:
+            # Drop and recreate the profiles table with the unique constraint
             cur.execute("""
+                DROP TABLE IF EXISTS profiles CASCADE;
+
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
                     email VARCHAR(255) UNIQUE NOT NULL,
@@ -30,7 +33,7 @@ class Database:
 
                 CREATE TABLE IF NOT EXISTS profiles (
                     id SERIAL PRIMARY KEY,
-                    user_id INTEGER REFERENCES users(id),
+                    user_id INTEGER REFERENCES users(id) UNIQUE,
                     gpa FLOAT,
                     interests TEXT[],
                     activities TEXT[],
