@@ -28,18 +28,18 @@ def login_page():
     </div>
     """, unsafe_allow_html=True)
 
-    # Add Google OAuth button here
-    if st.button("Sign in with Google"):
-        flow = Flow.from_client_secrets_file(
-            'client_secrets.json',
-            scopes=['https://www.googleapis.com/auth/userinfo.email', 
-                   'https://www.googleapis.com/auth/userinfo.profile'],
-            redirect_uri='http://localhost:5000/oauth2callback'
-        )
-        authorization_url, state = flow.authorization_url()
-        st.session_state.oauth_state = state
-        st.markdown(f'<a href="{authorization_url}">Click here to complete sign in</a>', 
-                   unsafe_allow_html=True)
+    # Add temporary direct access button
+    if st.button("🎓 Enter as Demo User"):
+        # Create a mock user session
+        mock_user = User(
+            email="demo@example.com",
+            name="Demo User"
+        ).create()
+        st.session_state.user = mock_user
+        st.experimental_rerun()
+
+    # Keep the Google OAuth button for later implementation
+    st.button("Sign in with Google", disabled=True)
 
 def handle_oauth_callback():
     query_params = st.query_params
@@ -66,7 +66,7 @@ def handle_oauth_callback():
         st.experimental_rerun()
 
 def get_user_info(credentials):
-    # Implement Google user info API call
+    # Mock implementation for now
     return {
         'email': 'example@gmail.com',
         'name': 'Example User'
