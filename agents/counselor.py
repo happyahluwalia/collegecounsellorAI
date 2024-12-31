@@ -1,6 +1,6 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain.chat_models.openai import ChatOpenAI
+from langchain_community.chat_models import ChatOpenAI
 from langgraph.graph import END, Graph
 
 class CounselorAgent:
