@@ -4,146 +4,170 @@ from utils.error_handling import handle_error, APIError, DatabaseError
 import logging
 import json
 from datetime import datetime
+import traceback
 
 logger = logging.getLogger(__name__)
 
+def show_error_message(error_message, error_trace=None):
+    """Display an error message with expandable details."""
+    st.error(error_message)
+    if error_trace:
+        with st.expander("Show Error Details"):
+            st.code(error_trace)
+
 def show_walkthrough():
     """Display the college match recommendation walkthrough."""
-    st.subheader("🎯 Find Your Best College Matches")
+    try:
+        st.subheader("🎯 Find Your Best College Matches")
 
-    # Initialize walkthrough state
-    if 'walkthrough_step' not in st.session_state:
-        st.session_state.walkthrough_step = 0
-    if 'walkthrough_data' not in st.session_state:
-        st.session_state.walkthrough_data = {}
+        # Initialize walkthrough state
+        if 'walkthrough_step' not in st.session_state:
+            st.session_state.walkthrough_step = 0
+        if 'walkthrough_data' not in st.session_state:
+            st.session_state.walkthrough_data = {}
 
-    # Progress bar
-    steps = ["Preferences", "Location", "Campus Life", "Review"]
-    progress = st.session_state.walkthrough_step / (len(steps) - 1)
-    st.progress(progress, f"Step {st.session_state.walkthrough_step + 1} of {len(steps)}")
+        # Progress bar
+        steps = ["Preferences", "Location", "Campus Life", "Review"]
+        progress = st.session_state.walkthrough_step / (len(steps) - 1)
+        st.progress(progress, f"Step {st.session_state.walkthrough_step + 1} of {len(steps)}")
 
-    # Step content
-    if st.session_state.walkthrough_step == 0:
-        st.markdown("### Academic Preferences")
+        # Step content
+        if st.session_state.walkthrough_step == 0:
+            st.markdown("### Academic Preferences")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.selectbox(
+                    "Preferred Class Size",
+                    ["Small (< 20)", "Medium (20-50)", "Large (50+)", "No Preference"],
+                    key="class_size"
+                )
+                st.multiselect(
+                    "Preferred Teaching Style",
+                    ["Lecture-based", "Discussion-based", "Project-based", "Research-focused"],
+                    key="teaching_style"
+                )
+            with col2:
+                st.selectbox(
+                    "Campus Setting",
+                    ["Urban", "Suburban", "Rural", "No Preference"],
+                    key="campus_setting"
+                )
+                st.multiselect(
+                    "Special Programs Interest",
+                    ["Honors Program", "Study Abroad", "Internship Programs", "Research Opportunities"],
+                    key="special_programs"
+                )
+
+        elif st.session_state.walkthrough_step == 1:
+            st.markdown("### Location Preferences")
+            st.multiselect(
+                "Preferred Regions",
+                ["Northeast", "Southeast", "Midwest", "Southwest", "West Coast"],
+                key="regions"
+            )
+            st.slider(
+                "Maximum Distance from Home (miles)",
+                0, 3000, 500,
+                key="max_distance"
+            )
+            st.multiselect(
+                "Preferred Climate",
+                ["Warm", "Cold", "Moderate", "No Preference"],
+                key="climate"
+            )
+
+        elif st.session_state.walkthrough_step == 2:
+            st.markdown("### Campus Life Preferences")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.selectbox(
+                    "Housing Preference",
+                    ["On-campus", "Off-campus", "No Preference"],
+                    key="housing"
+                )
+                st.multiselect(
+                    "Important Campus Activities",
+                    ["Sports", "Arts", "Music", "Theater", "Greek Life", "Cultural Organizations"],
+                    key="activities"
+                )
+            with col2:
+                st.selectbox(
+                    "Athletics Importance",
+                    ["Very Important", "Somewhat Important", "Not Important"],
+                    key="athletics"
+                )
+                st.slider(
+                    "Importance of Campus Diversity (1-5)",
+                    1, 5, 3,
+                    key="diversity"
+                )
+
+        else:  # Review step
+            st.markdown("### Review Your Preferences")
+            if st.session_state.walkthrough_data:
+                for category, preferences in st.session_state.walkthrough_data.items():
+                    st.markdown(f"**{category}**")
+                    if isinstance(preferences, (list, tuple)):
+                        for pref in preferences:
+                            st.markdown(f"- {pref}")
+                    else:
+                        st.markdown(f"- {preferences}")
+
+        # Navigation buttons
         col1, col2 = st.columns(2)
         with col1:
-            preferred_size = st.selectbox(
-                "Preferred Class Size",
-                ["Small (< 20)", "Medium (20-50)", "Large (50+)", "No Preference"],
-                key="class_size"
-            )
-            teaching_style = st.multiselect(
-                "Preferred Teaching Style",
-                ["Lecture-based", "Discussion-based", "Project-based", "Research-focused"],
-                key="teaching_style"
-            )
+            if st.session_state.walkthrough_step > 0:
+                if st.button("← Previous"):
+                    st.session_state.walkthrough_step -= 1
+                    st.rerun()
+
         with col2:
-            campus_setting = st.selectbox(
-                "Campus Setting",
-                ["Urban", "Suburban", "Rural", "No Preference"],
-                key="campus_setting"
-            )
-            special_programs = st.multiselect(
-                "Special Programs Interest",
-                ["Honors Program", "Study Abroad", "Internship Programs", "Research Opportunities"],
-                key="special_programs"
-            )
+            if st.session_state.walkthrough_step < len(steps) - 1:
+                if st.button("Next →"):
+                    try:
+                        # Save current step data
+                        current_step_data = {}
+                        if st.session_state.walkthrough_step == 0:
+                            current_step_data = {
+                                "Class Size": st.session_state.class_size,
+                                "Teaching Style": st.session_state.teaching_style,
+                                "Campus Setting": st.session_state.campus_setting,
+                                "Special Programs": st.session_state.special_programs
+                            }
+                        elif st.session_state.walkthrough_step == 1:
+                            current_step_data = {
+                                "Preferred Regions": st.session_state.regions,
+                                "Maximum Distance": st.session_state.max_distance,
+                                "Climate": st.session_state.climate
+                            }
+                        elif st.session_state.walkthrough_step == 2:
+                            current_step_data = {
+                                "Housing": st.session_state.housing,
+                                "Campus Activities": st.session_state.activities,
+                                "Athletics": st.session_state.athletics,
+                                "Diversity Importance": st.session_state.diversity
+                            }
 
-    elif st.session_state.walkthrough_step == 1:
-        st.markdown("### Location Preferences")
-        regions = st.multiselect(
-            "Preferred Regions",
-            ["Northeast", "Southeast", "Midwest", "Southwest", "West Coast"],
-            key="regions"
-        )
-        max_distance = st.slider(
-            "Maximum Distance from Home (miles)",
-            0, 3000, 500,
-            key="max_distance"
-        )
-        climate = st.multiselect(
-            "Preferred Climate",
-            ["Warm", "Cold", "Moderate", "No Preference"],
-            key="climate"
-        )
+                        st.session_state.walkthrough_data.update(current_step_data)
+                        st.session_state.walkthrough_step += 1
+                        st.rerun()
+                    except Exception as e:
+                        error_trace = traceback.format_exc()
+                        logger.error(f"Error saving walkthrough step data: {str(e)}\n{error_trace}")
+                        show_error_message("Error saving your preferences", error_trace)
+            elif st.button("Generate Recommendations"):
+                try:
+                    generate_recommendations(st.session_state.walkthrough_data)
+                    st.rerun()
+                except Exception as e:
+                    error_trace = traceback.format_exc()
+                    logger.error(f"Error generating recommendations: {str(e)}\n{error_trace}")
+                    show_error_message("Unable to generate recommendations", error_trace)
 
-    elif st.session_state.walkthrough_step == 2:
-        st.markdown("### Campus Life Preferences")
-        col1, col2 = st.columns(2)
-        with col1:
-            housing = st.selectbox(
-                "Housing Preference",
-                ["On-campus", "Off-campus", "No Preference"],
-                key="housing"
-            )
-            activities = st.multiselect(
-                "Important Campus Activities",
-                ["Sports", "Arts", "Music", "Theater", "Greek Life", "Cultural Organizations"],
-                key="activities"
-            )
-        with col2:
-            athletics = st.selectbox(
-                "Athletics Importance",
-                ["Very Important", "Somewhat Important", "Not Important"],
-                key="athletics"
-            )
-            diversity = st.slider(
-                "Importance of Campus Diversity (1-5)",
-                1, 5, 3,
-                key="diversity"
-            )
-
-    else:  # Review step
-        st.markdown("### Review Your Preferences")
-        if st.session_state.walkthrough_data:
-            for category, preferences in st.session_state.walkthrough_data.items():
-                st.markdown(f"**{category}**")
-                if isinstance(preferences, (list, tuple)):
-                    for pref in preferences:
-                        st.markdown(f"- {pref}")
-                else:
-                    st.markdown(f"- {preferences}")
-
-    # Navigation buttons
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.session_state.walkthrough_step > 0:
-            if st.button("← Previous"):
-                st.session_state.walkthrough_step -= 1
-                st.rerun()
-
-    with col2:
-        if st.session_state.walkthrough_step < len(steps) - 1:
-            if st.button("Next →"):
-                # Save current step data
-                current_step_data = {}
-                if st.session_state.walkthrough_step == 0:
-                    current_step_data = {
-                        "Class Size": st.session_state.class_size,
-                        "Teaching Style": st.session_state.teaching_style,
-                        "Campus Setting": st.session_state.campus_setting,
-                        "Special Programs": st.session_state.special_programs
-                    }
-                elif st.session_state.walkthrough_step == 1:
-                    current_step_data = {
-                        "Preferred Regions": st.session_state.regions,
-                        "Maximum Distance": st.session_state.max_distance,
-                        "Climate": st.session_state.climate
-                    }
-                elif st.session_state.walkthrough_step == 2:
-                    current_step_data = {
-                        "Housing": st.session_state.housing,
-                        "Campus Activities": st.session_state.activities,
-                        "Athletics": st.session_state.athletics,
-                        "Diversity Importance": st.session_state.diversity
-                    }
-
-                st.session_state.walkthrough_data.update(current_step_data)
-                st.session_state.walkthrough_step += 1
-                st.rerun()
-        elif st.button("Generate Recommendations"):
-            generate_recommendations(st.session_state.walkthrough_data)
-            st.rerun()
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Error in walkthrough: {str(e)}\n{error_trace}")
+        show_error_message("Something went wrong in the walkthrough", error_trace)
 
 def generate_recommendations(preferences):
     """Generate college recommendations based on walkthrough preferences."""
@@ -153,7 +177,7 @@ def generate_recommendations(preferences):
 
         # Combine profile data with walkthrough preferences
         enhanced_profile = {
-            **profile,
+            **(profile or {}),  # Handle case where profile is None
             "preferences": preferences
         }
 
@@ -172,8 +196,9 @@ def generate_recommendations(preferences):
         st.session_state.walkthrough_complete = True
 
     except Exception as e:
-        logger.error(f"Error generating recommendations: {str(e)}")
-        st.error("Unable to generate recommendations. Please try again.")
+        error_trace = traceback.format_exc()
+        logger.error(f"Error generating recommendations: {str(e)}\n{error_trace}")
+        show_error_message("Unable to generate recommendations", error_trace)
 
 @handle_error
 def render_college_matches():
@@ -281,20 +306,20 @@ def render_college_matches():
 
             except (json.JSONDecodeError, ValueError) as e:
                 logger.error(f"JSON structure error: {str(e)}")
-                st.error("Error processing college matches data")
+                show_error_message("Error processing college matches data", traceback.format_exc())
             except APIError as e:
                 logger.error(f"API error: {str(e)}")
-                st.error(str(e))
+                show_error_message(str(e), traceback.format_exc())
             except DatabaseError as e:
                 logger.error(f"Database error: {str(e)}")
-                st.error(str(e))
+                show_error_message(str(e), traceback.format_exc())
 
         with tab2:
             show_walkthrough()
 
     except Exception as e:
         logger.error(f"Unexpected error in college matches: {str(e)}")
-        st.error("Something went wrong while displaying college matches.")
+        show_error_message("Something went wrong while displaying college matches.", traceback.format_exc())
 
 if __name__ == "__main__":
     render_college_matches()
