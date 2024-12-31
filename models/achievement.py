@@ -3,6 +3,7 @@ from datetime import datetime
 from models.database import Database
 from utils.error_handling import DatabaseError, ValidationError
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +29,10 @@ class Achievement:
                 'icon_name': '👤',
                 'points': 100,
                 'category': 'profile',
-                'requirements': {
+                'requirements': json.dumps({
                     'profile_fields': ['gpa', 'interests', 'activities', 
-                                     'target_majors', 'target_schools']
-                }
+                                   'target_majors', 'target_schools']
+                })
             },
             {
                 'name': 'Chat Champion',
@@ -39,9 +40,9 @@ class Achievement:
                 'icon_name': '💬',
                 'points': 150,
                 'category': 'engagement',
-                'requirements': {
+                'requirements': json.dumps({
                     'chat_sessions': 5
-                }
+                })
             },
             {
                 'name': 'Goal Getter',
@@ -49,9 +50,9 @@ class Achievement:
                 'icon_name': '🎯',
                 'points': 200,
                 'category': 'planning',
-                'requirements': {
+                'requirements': json.dumps({
                     'goals_set': 3
-                }
+                })
             }
         ]
 
@@ -101,7 +102,7 @@ class Achievement:
                 self.db.execute("""
                     INSERT INTO user_achievements (user_id, achievement_id, progress)
                     VALUES (%s, %s, %s)
-                """, (user_id, self.id, current_state))
+                """, (user_id, self.id, json.dumps(current_state)))
                 return False
 
             if progress['completed']:
@@ -109,7 +110,7 @@ class Achievement:
 
             # Check if requirements are met
             is_complete = self._evaluate_requirements(current_state)
-            
+
             if is_complete:
                 # Update achievement completion
                 self.db.execute("""
@@ -117,9 +118,9 @@ class Achievement:
                     SET completed = true, completed_at = CURRENT_TIMESTAMP,
                         progress = %s
                     WHERE user_id = %s AND achievement_id = %s
-                """, (current_state, user_id, self.id))
+                """, (json.dumps(current_state), user_id, self.id))
                 logger.info(f"User {user_id} completed achievement {self.name}")
-                
+
             return is_complete
 
         except Exception as e:
@@ -129,19 +130,21 @@ class Achievement:
     def _evaluate_requirements(self, current_state: Dict) -> bool:
         """Evaluate if the current state meets achievement requirements."""
         try:
-            for key, required_value in self.requirements.items():
+            requirements = json.loads(self.requirements) if isinstance(self.requirements, str) else self.requirements
+
+            for key, required_value in requirements.items():
                 if key not in current_state:
                     return False
-                
+
                 current_value = current_state[key]
-                
+
                 if isinstance(required_value, (int, float)):
                     if current_value < required_value:
                         return False
                 elif isinstance(required_value, list):
                     if not all(field in current_value for field in required_value):
                         return False
-                        
+
             return True
         except Exception as e:
             logger.error(f"Error evaluating requirements: {str(e)}")
@@ -159,7 +162,7 @@ class Achievement:
                     ON ua.achievement_id = a.id AND ua.user_id = %s
                 ORDER BY a.category, a.points
             """, (user_id,))
-            
+
             return results
         except Exception as e:
             logger.error(f"Error fetching user achievements: {str(e)}")
