@@ -250,10 +250,16 @@ def display_existing_deadlines():
                 with col1:
                     st.write(f"Due: {deadline['deadline_date'].strftime('%B %d, %Y')}")
                     st.write(f"Status: {deadline['status'].title()}")
-                    requirements = json.loads(deadline['requirements'])
+                    requirements = deadline['requirements']
+                    # Handle both string and dict cases
+                    if isinstance(requirements, str):
+                        try:
+                            requirements = json.loads(requirements)
+                        except json.JSONDecodeError:
+                            requirements = {"notes": requirements}
                     if requirements.get('notes'):
                         st.write("Notes:", requirements['notes'])
-                
+
                 with col2:
                     new_status = st.selectbox(
                         "Update Status",
