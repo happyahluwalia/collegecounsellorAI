@@ -21,7 +21,7 @@ def initialize_sample_programs():
     try:
         db = Database()
         count = db.execute_one("SELECT COUNT(*) as count FROM internship_programs")
-        
+
         if count['count'] == 0:
             sample_programs = [
                 {
@@ -36,7 +36,7 @@ def initialize_sample_programs():
                     'program_duration': '4 weeks',
                     'location_type': 'In-person',
                     'locations': ['UC Davis', 'UC Irvine', 'UC San Diego', 'UC Santa Cruz'],
-                    'requirements': json.dumps({
+                    'requirements': {
                         'gpa_minimum': 3.5,
                         'materials': [
                             'Application Form',
@@ -44,7 +44,7 @@ def initialize_sample_programs():
                             'Transcript',
                             'Personal Statement'
                         ]
-                    })
+                    }
                 },
                 {
                     'name': 'Bank of America Student Leaders Program',
@@ -52,13 +52,13 @@ def initialize_sample_programs():
                     'description': 'Eight-week paid internship at a local nonprofit organization and leadership summit in Washington, D.C.',
                     'website_url': 'https://about.bankofamerica.com/en/making-an-impact/student-leaders',
                     'program_type': 'Leadership Development',
-                    'subject_areas': ['Leadership', 'Community Service', 'Nonprofit Management'],
+                    'subject_areas': ['Leadership', 'Community Service', 'Business'],
                     'grade_levels': ['11th Grade', '12th Grade'],
                     'application_deadline': '2025-01-31',
                     'program_duration': '8 weeks',
                     'location_type': 'Hybrid',
                     'locations': ['Various U.S. Cities'],
-                    'requirements': json.dumps({
+                    'requirements': {
                         'eligibility': [
                             'Currently be a junior or senior in high school',
                             'Be legally authorized to work in the US',
@@ -70,7 +70,7 @@ def initialize_sample_programs():
                             'Resume',
                             'Personal Statement'
                         ]
-                    })
+                    }
                 },
                 {
                     'name': 'MIT THINK Scholars Program',
@@ -84,14 +84,14 @@ def initialize_sample_programs():
                     'program_duration': '6 months',
                     'location_type': 'Remote',
                     'locations': ['Remote'],
-                    'requirements': json.dumps({
+                    'requirements': {
                         'materials': [
                             'Project Proposal',
                             'Budget Plan',
                             'Timeline',
                             'Teacher Recommendation'
                         ]
-                    })
+                    }
                 }
             ]
 
@@ -109,7 +109,7 @@ def initialize_sample_programs():
                     program['program_duration'], program['location_type'],
                     program['locations'], program['requirements']
                 ))
-            
+
             logger.info("Sample internship programs initialized")
     except Exception as e:
         error_trace = traceback.format_exc()
@@ -219,7 +219,7 @@ def render_program_browser(interests: List[str]):
                         st.markdown("**Locations:** " + ", ".join(program['locations']))
 
                     # Show requirements
-                    requirements = json.loads(program['requirements'])
+                    requirements = program['requirements']
                     with st.expander("View Requirements"):
                         for key, value in requirements.items():
                             if isinstance(value, list):
@@ -296,7 +296,7 @@ def render_applications():
     """Render the student's internship applications."""
     try:
         st.subheader("My Applications")
-        
+
         db = Database()
         applications = db.execute("""
             SELECT 
@@ -308,11 +308,11 @@ def render_applications():
             WHERE ia.user_id = %s
             ORDER BY ip.application_deadline
         """, (st.session_state.user.id,))
-        
+
         if not applications:
             st.info("You haven't marked any programs yet. Browse available programs and mark the ones you're interested in!")
             return
-        
+
         # Group applications by status
         status_order = ['interested', 'in_progress', 'submitted', 'accepted', 'rejected']
         status_colors = {
@@ -322,22 +322,22 @@ def render_applications():
             'accepted': '🎉',
             'rejected': '😔'
         }
-        
+
         for status in status_order:
             status_apps = [app for app in applications if app['status'] == status]
             if status_apps:
                 st.markdown(f"### {status_colors[status]} {status.title()}")
-                
+
                 for app in status_apps:
                     with st.expander(f"{app['name']} - {app['organization']}"):
                         col1, col2 = st.columns([3, 1])
-                        
+
                         with col1:
                             # Application details
                             st.markdown(f"**Deadline:** {app['application_deadline'].strftime('%B %d, %Y')}")
                             if app['application_date']:
                                 st.markdown(f"**Applied:** {app['application_date'].strftime('%B %d, %Y')}")
-                            
+
                             # Notes editor
                             new_notes = st.text_area(
                                 "Application Notes",
@@ -356,7 +356,7 @@ def render_applications():
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Failed to update notes: {str(e)}")
-                        
+
                         with col2:
                             # Status updater
                             new_status = st.selectbox(
@@ -365,13 +365,13 @@ def render_applications():
                                 index=status_order.index(app['status']),
                                 key=f"status_{app['id']}"
                             )
-                            
+
                             if new_status != app['status']:
                                 try:
                                     application_date = None
                                     if new_status == 'submitted':
                                         application_date = datetime.now().date()
-                                    
+
                                     db.execute("""
                                         UPDATE internship_applications
                                         SET status = %s,
@@ -383,7 +383,7 @@ def render_applications():
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Failed to update status: {str(e)}")
-                            
+
                             st.markdown(f"[Visit Website]({app['website_url']})")
 
     except Exception as e:
