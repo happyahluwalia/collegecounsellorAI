@@ -7,6 +7,7 @@ from utils.error_handling import handle_error, DatabaseError
 import logging
 import json
 import traceback
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ def render_timeline_view():
     """Render the visual timeline of applications and milestones."""
     try:
         db = Database()
-        
+
         # Fetch deadlines and milestones
         deadlines = db.execute("""
             SELECT college_name, deadline_type, deadline_date, status
@@ -83,7 +84,7 @@ def render_timeline_view():
 
         if timeline_data:
             df = pd.DataFrame(timeline_data)
-            
+
             # Create Gantt chart
             fig = ff.create_gantt(
                 df,
@@ -94,7 +95,7 @@ def render_timeline_view():
                 showgrid_x=True,
                 showgrid_y=True
             )
-            
+
             # Update layout
             fig.update_layout(
                 title='Application Timeline',
@@ -114,7 +115,7 @@ def render_timeline_view():
             for item in upcoming:
                 days_left = (item['Start'] - datetime.now().date()).days
                 status_color = "🔴" if days_left <= 7 else "🟡" if days_left <= 14 else "🟢"
-                
+
                 st.markdown(f"""
                     {status_color} **{item['Task']}**  
                     Due: {item['Start'].strftime('%B %d, %Y')} ({days_left} days left)
@@ -156,7 +157,7 @@ def manage_deadlines():
                             json.dumps({"notes": requirements})
                         ))
                         st.success("Deadline added successfully!")
-                        
+
                         # Add automatic reminder
                         reminder_date = deadline_date - timedelta(days=7)
                         db.execute("""
@@ -176,6 +177,8 @@ def manage_deadlines():
                             deadline_type,
                             reminder_date
                         ))
+                        time.sleep(0.5)  # Brief pause to ensure database updates are complete
+                        st.rerun()  # Refresh the page to show new deadline
 
                     except Exception as e:
                         error_trace = traceback.format_exc()
@@ -213,6 +216,8 @@ def manage_deadlines():
                             due_date
                         ))
                         st.success("Milestone added successfully!")
+                        time.sleep(0.5)  # Brief pause to ensure database updates are complete
+                        st.rerun()  # Refresh the page to show new milestone
                     except Exception as e:
                         error_trace = traceback.format_exc()
                         logger.error(f"Error adding milestone: {str(e)}\n{error_trace}")
@@ -246,21 +251,64 @@ def display_existing_deadlines():
 
         for deadline in deadlines:
             with st.expander(f"{deadline['college_name']} - {deadline['deadline_type']}"):
-                col1, col2 = st.columns([3, 1])
+                col1, col2, col3 = st.columns([2, 1, 1])
+
+                # Edit form
                 with col1:
                     st.write(f"Due: {deadline['deadline_date'].strftime('%B %d, %Y')}")
                     st.write(f"Status: {deadline['status'].title()}")
                     requirements = deadline['requirements']
-                    # Handle both string and dict cases
                     if isinstance(requirements, str):
                         try:
                             requirements = json.loads(requirements)
                         except json.JSONDecodeError:
                             requirements = {"notes": requirements}
-                    if requirements.get('notes'):
-                        st.write("Notes:", requirements['notes'])
+
+                    # Allow editing notes
+                    new_notes = st.text_area(
+                        "Edit Notes",
+                        value=requirements.get('notes', ''),
+                        key=f"notes_{deadline['id']}"
+                    )
+
+                    if st.button("Update Notes", key=f"update_notes_{deadline['id']}"):
+                        try:
+                            db.execute("""
+                                UPDATE application_deadlines
+                                SET requirements = %s, updated_at = CURRENT_TIMESTAMP
+                                WHERE id = %s AND user_id = %s
+                            """, (
+                                json.dumps({"notes": new_notes}),
+                                deadline['id'],
+                                st.session_state.user.id
+                            ))
+                            st.success("Notes updated!")
+                            time.sleep(0.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to update notes: {str(e)}")
 
                 with col2:
+                    new_date = st.date_input(
+                        "Update Due Date",
+                        value=deadline['deadline_date'],
+                        key=f"date_{deadline['id']}"
+                    )
+                    if new_date != deadline['deadline_date']:
+                        if st.button("Update Date", key=f"update_date_{deadline['id']}"):
+                            try:
+                                db.execute("""
+                                    UPDATE application_deadlines
+                                    SET deadline_date = %s, updated_at = CURRENT_TIMESTAMP
+                                    WHERE id = %s AND user_id = %s
+                                """, (new_date, deadline['id'], st.session_state.user.id))
+                                st.success("Date updated!")
+                                time.sleep(0.5)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Failed to update date: {str(e)}")
+
+                with col3:
                     new_status = st.selectbox(
                         "Update Status",
                         ["pending", "in_progress", "completed"],
@@ -268,13 +316,17 @@ def display_existing_deadlines():
                         index=["pending", "in_progress", "completed"].index(deadline['status'])
                     )
                     if new_status != deadline['status']:
-                        db.execute("""
-                            UPDATE application_deadlines
-                            SET status = %s, updated_at = CURRENT_TIMESTAMP
-                            WHERE id = %s AND user_id = %s
-                        """, (new_status, deadline['id'], st.session_state.user.id))
-                        st.success("Status updated!")
-                        st.rerun()
+                        try:
+                            db.execute("""
+                                UPDATE application_deadlines
+                                SET status = %s, updated_at = CURRENT_TIMESTAMP
+                                WHERE id = %s AND user_id = %s
+                            """, (new_status, deadline['id'], st.session_state.user.id))
+                            st.success("Status updated!")
+                            time.sleep(0.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to update status: {str(e)}")
 
     except Exception as e:
         error_trace = traceback.format_exc()
@@ -294,15 +346,71 @@ def display_existing_milestones():
 
         for milestone in milestones:
             with st.expander(f"{milestone['title']} ({milestone['category']})"):
-                col1, col2 = st.columns([3, 1])
+                col1, col2, col3 = st.columns([2, 1, 1])
+
                 with col1:
-                    st.write(f"Due: {milestone['due_date'].strftime('%B %d, %Y')}")
-                    st.write(f"Priority: {milestone['priority'].title()}")
-                    st.write(f"Status: {milestone['status'].title()}")
-                    if milestone['description']:
-                        st.write("Description:", milestone['description'])
-                
+                    # Edit title and description
+                    new_title = st.text_input(
+                        "Edit Title",
+                        value=milestone['title'],
+                        key=f"title_{milestone['id']}"
+                    )
+                    new_description = st.text_area(
+                        "Edit Description",
+                        value=milestone['description'] or '',
+                        key=f"desc_{milestone['id']}"
+                    )
+                    if st.button("Update Details", key=f"update_details_{milestone['id']}"):
+                        try:
+                            db.execute("""
+                                UPDATE timeline_milestones
+                                SET title = %s, description = %s, updated_at = CURRENT_TIMESTAMP
+                                WHERE id = %s AND user_id = %s
+                            """, (
+                                new_title,
+                                new_description,
+                                milestone['id'],
+                                st.session_state.user.id
+                            ))
+                            st.success("Details updated!")
+                            time.sleep(0.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to update details: {str(e)}")
+
                 with col2:
+                    new_date = st.date_input(
+                        "Update Due Date",
+                        value=milestone['due_date'],
+                        key=f"milestone_date_{milestone['id']}"
+                    )
+                    new_priority = st.select_slider(
+                        "Update Priority",
+                        options=["Low", "Medium", "High"],
+                        value=milestone['priority'].title(),
+                        key=f"priority_{milestone['id']}"
+                    )
+                    if (new_date != milestone['due_date'] or 
+                        new_priority.lower() != milestone['priority']):
+                        if st.button("Update Date/Priority", key=f"update_date_priority_{milestone['id']}"):
+                            try:
+                                db.execute("""
+                                    UPDATE timeline_milestones
+                                    SET due_date = %s, priority = %s, updated_at = CURRENT_TIMESTAMP
+                                    WHERE id = %s AND user_id = %s
+                                """, (
+                                    new_date,
+                                    new_priority.lower(),
+                                    milestone['id'],
+                                    st.session_state.user.id
+                                ))
+                                st.success("Date and priority updated!")
+                                time.sleep(0.5)
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Failed to update date/priority: {str(e)}")
+
+                with col3:
                     new_status = st.selectbox(
                         "Update Status",
                         ["pending", "in_progress", "completed"],
@@ -310,19 +418,26 @@ def display_existing_milestones():
                         index=["pending", "in_progress", "completed"].index(milestone['status'])
                     )
                     if new_status != milestone['status']:
-                        db.execute("""
-                            UPDATE timeline_milestones
-                            SET status = %s, updated_at = CURRENT_TIMESTAMP,
-                                completion_date = CASE 
-                                    WHEN %s = 'completed' THEN CURRENT_TIMESTAMP
-                                    ELSE NULL
-                                END
-                            WHERE id = %s AND user_id = %s
-                        """, (new_status, new_status, milestone['id'], st.session_state.user.id))
-                        st.success("Status updated!")
-                        st.rerun()
+                        try:
+                            db.execute("""
+                                UPDATE timeline_milestones
+                                SET status = %s, updated_at = CURRENT_TIMESTAMP,
+                                    completion_date = CASE 
+                                        WHEN %s = 'completed' THEN CURRENT_TIMESTAMP
+                                        ELSE NULL
+                                    END
+                                WHERE id = %s AND user_id = %s
+                            """, (new_status, new_status, milestone['id'], st.session_state.user.id))
+                            st.success("Status updated!")
+                            time.sleep(0.5)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to update status: {str(e)}")
 
     except Exception as e:
         error_trace = traceback.format_exc()
         logger.error(f"Error displaying milestones: {str(e)}\n{error_trace}")
         show_error_message("Unable to display milestones.", error_trace)
+
+if __name__ == "__main__":
+    render_timeline()
