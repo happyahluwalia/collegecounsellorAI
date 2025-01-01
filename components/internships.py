@@ -324,12 +324,15 @@ def render_applications():
             'rejected': '😔'
         }
 
-        for status in status_order:
+        for status_idx, status in enumerate(status_order):
             status_apps = [app for app in applications if app['status'] == status]
             if status_apps:
                 st.markdown(f"### {status_colors[status]} {status.title()}")
 
-                for app in status_apps:
+                for app_idx, app in enumerate(status_apps):
+                    # Create a unique identifier combining status, app id and index
+                    unique_id = f"{status}_{app['id']}_{app_idx}"
+
                     with st.expander(f"{app['name']} - {app['organization']}"):
                         col1, col2 = st.columns([3, 1])
 
@@ -339,14 +342,14 @@ def render_applications():
                             if app['application_date']:
                                 st.markdown(f"**Applied:** {app['application_date'].strftime('%B %d, %Y')}")
 
-                            # Notes editor
+                            # Notes editor with unique key
                             new_notes = st.text_area(
                                 "Application Notes",
                                 value=app['notes'] or '',
-                                key=f"notes_{app['id']}"
+                                key=f"notes_{unique_id}"
                             )
                             if new_notes != app['notes']:
-                                if st.button("Update Notes", key=f"update_notes_{app['id']}"):
+                                if st.button("Update Notes", key=f"update_notes_{unique_id}"):
                                     try:
                                         db.execute("""
                                             UPDATE internship_applications
@@ -359,12 +362,12 @@ def render_applications():
                                         st.error(f"Failed to update notes: {str(e)}")
 
                         with col2:
-                            # Status updater
+                            # Status updater with unique key
                             new_status = st.selectbox(
                                 "Update Status",
                                 status_order,
                                 index=status_order.index(app['status']),
-                                key=f"status_{app['id']}"
+                                key=f"status_{unique_id}"
                             )
 
                             if new_status != app['status']:
