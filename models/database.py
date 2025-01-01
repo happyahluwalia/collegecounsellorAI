@@ -54,7 +54,7 @@ class Database:
         """Create database tables if they don't exist"""
         try:
             with self.conn.cursor() as cur:
-                # Create achievements table with unique name constraint
+                # Create existing tables
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS achievements (
                         id SERIAL PRIMARY KEY,
@@ -117,6 +117,44 @@ class Database:
                         matches JSONB NOT NULL,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    -- New tables for timeline and deadline tracking
+                    CREATE TABLE IF NOT EXISTS application_deadlines (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER REFERENCES users(id),
+                        college_name VARCHAR(255) NOT NULL,
+                        deadline_type VARCHAR(50) NOT NULL,
+                        deadline_date DATE NOT NULL,
+                        requirements JSONB NOT NULL DEFAULT '{}',
+                        status VARCHAR(50) DEFAULT 'pending',
+                        notes TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS timeline_milestones (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER REFERENCES users(id),
+                        title VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        due_date DATE NOT NULL,
+                        category VARCHAR(50) NOT NULL,
+                        priority VARCHAR(20) DEFAULT 'medium',
+                        status VARCHAR(50) DEFAULT 'pending',
+                        completion_date TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS deadline_reminders (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER REFERENCES users(id),
+                        deadline_id INTEGER REFERENCES application_deadlines(id),
+                        reminder_date TIMESTAMP NOT NULL,
+                        reminder_type VARCHAR(50) NOT NULL,
+                        is_sent BOOLEAN DEFAULT FALSE,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
                 """)
                 self.conn.commit()
