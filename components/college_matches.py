@@ -5,6 +5,7 @@ import logging
 import json
 from datetime import datetime
 import traceback
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -155,10 +156,16 @@ def show_walkthrough():
                         error_trace = traceback.format_exc()
                         logger.error(f"Error saving walkthrough step data: {str(e)}\n{error_trace}")
                         show_error_message("Error saving your preferences", error_trace)
-            elif st.button("Generate Recommendations"):
+            elif st.button("Generate Recommendations", type="primary"):
                 try:
-                    generate_recommendations(st.session_state.walkthrough_data)
-                    st.rerun()
+                    with st.spinner("🎓 Generating your personalized college matches..."):
+                        generate_recommendations(st.session_state.walkthrough_data)
+
+                        # Switch to the College Matches tab after generating recommendations
+                        st.session_state.active_tab = "College Matches"
+                        st.success("✅ Your college matches have been generated!")
+                        time.sleep(1)  # Give user time to see the success message
+                        st.rerun()
                 except Exception as e:
                     error_trace = traceback.format_exc()
                     logger.error(f"Error generating recommendations: {str(e)}\n{error_trace}")
@@ -218,7 +225,15 @@ def render_college_matches():
         db = st.session_state.user.db
 
         # Show walkthrough or matches
+        if 'active_tab' not in st.session_state:
+            st.session_state.active_tab = "College Matches"
+
         tab1, tab2 = st.tabs(["College Matches", "Find New Matches"])
+
+        if st.session_state.active_tab == "College Matches":
+            tab1.write("")  # Activate the first tab
+        else:
+            tab2.write("")  # Activate the second tab
 
         with tab1:
             # Add refresh button

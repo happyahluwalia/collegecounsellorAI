@@ -4,6 +4,7 @@ from models.database import Database
 from utils.error_handling import DatabaseError, ValidationError
 import logging
 import json
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,21 @@ class Achievement:
     @classmethod
     def initialize_default_achievements(cls):
         """Create default achievements if they don't exist."""
+        try:
+            # First, ensure the name column has a unique constraint
+            db = Database()
+            db.execute("""
+                ALTER TABLE achievements 
+                ADD CONSTRAINT unique_achievement_name UNIQUE (name)
+            """)
+            logger.info("Added unique constraint to achievements name column")
+        except Exception as e:
+            # Ignore if constraint already exists
+            if "already exists" not in str(e):
+                error_trace = traceback.format_exc()
+                logger.error(f"Error adding unique constraint: {str(e)}\n{error_trace}")
+                raise DatabaseError(f"Failed to initialize achievements table: {str(e)}")
+
         defaults = [
             {
                 'name': 'Profile Pioneer',
@@ -57,9 +73,8 @@ class Achievement:
         ]
 
         try:
-            db = Database()
             for achievement in defaults:
-                db.execute_one("""
+                db.execute("""
                     INSERT INTO achievements 
                     (name, description, icon_name, points, category, requirements)
                     VALUES (%s, %s, %s, %s, %s, %s)
@@ -74,8 +89,9 @@ class Achievement:
                 ))
             logger.info("Default achievements initialized successfully")
         except Exception as e:
-            logger.error(f"Error initializing default achievements: {str(e)}")
-            raise DatabaseError("Failed to initialize default achievements")
+            error_trace = traceback.format_exc()
+            logger.error(f"Error initializing default achievements: {str(e)}\n{error_trace}")
+            raise DatabaseError(f"Failed to initialize default achievements: {str(e)}")
 
     @classmethod
     def get_all(cls) -> List['Achievement']:

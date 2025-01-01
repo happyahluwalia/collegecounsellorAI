@@ -6,6 +6,7 @@ from components.college_matches import render_college_matches
 from models.achievement import Achievement
 from utils.error_handling import handle_error, DatabaseError
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ def render_dashboard():
         Achievement.initialize_default_achievements()
     except DatabaseError as e:
         logger.error(f"Failed to initialize achievements: {str(e)}")
-        st.error("System initialization error. Please try again later.")
+        show_error_message("System initialization error. Please try again later.", traceback.format_exc())
 
     # Create three columns for the layout
     col1, col2, col3 = st.columns([1, 2, 1])
