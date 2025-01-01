@@ -161,11 +161,6 @@ def show_walkthrough():
                     with st.spinner("🎓 Generating your personalized college matches..."):
                         generate_recommendations(st.session_state.walkthrough_data)
 
-                        # Switch to the College Matches tab after generating recommendations
-                        st.session_state.active_tab = "College Matches"
-                        st.success("✅ Your college matches have been generated!")
-                        time.sleep(1)  # Give user time to see the success message
-                        st.rerun()
                 except Exception as e:
                     error_trace = traceback.format_exc()
                     logger.error(f"Error generating recommendations: {str(e)}\n{error_trace}")
@@ -179,28 +174,35 @@ def show_walkthrough():
 def generate_recommendations(preferences):
     """Generate college recommendations based on walkthrough preferences."""
     try:
-        counselor = CounselorAgent()
-        profile = st.session_state.user.get_profile()
+        with st.spinner("🎓 Generating your personalized college matches..."):
+            counselor = CounselorAgent()
+            profile = st.session_state.user.get_profile()
 
-        # Combine profile data with walkthrough preferences
-        enhanced_profile = {
-            **(profile or {}),  # Handle case where profile is None
-            "preferences": preferences
-        }
+            # Combine profile data with walkthrough preferences
+            enhanced_profile = {
+                **(profile or {}),  # Handle case where profile is None
+                "preferences": preferences
+            }
 
-        # Generate recommendations
-        matches_json = counselor.generate_college_matches(enhanced_profile)
-        matches = json.loads(matches_json)  # Convert JSON string to dict
+            # Generate recommendations
+            matches_json = counselor.generate_college_matches(enhanced_profile)
+            matches = json.loads(matches_json)  # Convert JSON string to dict
 
-        # Store in database
-        db = st.session_state.user.db
-        db.execute("""
-            INSERT INTO college_matches (user_id, matches)
-            VALUES (%s, %s)
-        """, (st.session_state.user.id, matches_json))  # Store original JSON string
+            # Store in database
+            db = st.session_state.user.db
+            db.execute("""
+                INSERT INTO college_matches (user_id, matches)
+                VALUES (%s, %s)
+            """, (st.session_state.user.id, matches_json))  # Store original JSON string
 
-        logger.info(f"Generated new college matches for user {st.session_state.user.id} with preferences")
-        st.session_state.walkthrough_complete = True
+            logger.info(f"Generated new college matches for user {st.session_state.user.id} with preferences")
+            st.session_state.walkthrough_complete = True
+
+            # Switch to the College Matches tab after generating recommendations
+            st.session_state.active_tab = "College Matches"
+            st.success("✅ Your college matches have been generated!")
+            time.sleep(1)  # Give user time to see the success message
+            st.rerun()
 
     except Exception as e:
         error_trace = traceback.format_exc()

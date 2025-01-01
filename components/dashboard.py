@@ -10,6 +10,13 @@ import traceback
 
 logger = logging.getLogger(__name__)
 
+def show_error_message(error_message, error_trace=None):
+    """Display an error message with expandable details."""
+    st.error(error_message)
+    if error_trace:
+        with st.expander("Show Error Details"):
+            st.code(error_trace)
+
 @handle_error
 def render_dashboard():
     """Renders the main dashboard interface of the College Compass application."""
@@ -19,8 +26,9 @@ def render_dashboard():
         # Initialize achievements if needed
         Achievement.initialize_default_achievements()
     except DatabaseError as e:
-        logger.error(f"Failed to initialize achievements: {str(e)}")
-        show_error_message("System initialization error. Please try again later.", traceback.format_exc())
+        error_trace = traceback.format_exc()
+        logger.error(f"Failed to initialize achievements: {str(e)}\n{error_trace}")
+        show_error_message("System initialization error. Please try again later.", error_trace)
 
     # Create three columns for the layout
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -41,20 +49,27 @@ def render_dashboard():
                         logger.info(f"Loaded chat session {session['id']}")
                         st.rerun()
             except DatabaseError as e:
-                logger.error(f"Failed to load chat sessions: {str(e)}")
-                st.error("Unable to load chat history")
+                error_trace = traceback.format_exc()
+                logger.error(f"Failed to load chat sessions: {str(e)}\n{error_trace}")
+                show_error_message("Unable to load chat history", error_trace)
 
     with col2:
+        if 'active_tab' not in st.session_state:
+            st.session_state.active_tab = "Chat"
+
         tab1, tab2, tab3 = st.tabs(["Chat", "College Matches", "Profile"])
 
         with tab1:
-            render_chat()
+            if st.session_state.active_tab == "Chat":
+                render_chat()
 
         with tab2:
-            render_college_matches()
+            if st.session_state.active_tab == "College Matches":
+                render_college_matches()
 
         with tab3:
-            render_profile()
+            if st.session_state.active_tab == "Profile":
+                render_profile()
 
     with col3:
         # Render achievements panel
