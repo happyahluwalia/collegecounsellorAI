@@ -100,7 +100,7 @@ def render_timeline_view():
 
         # Fetch deadlines and milestones
         deadlines = db.execute("""
-            SELECT college_name, deadline_type, deadline_date, status
+            SELECT id, college_name, deadline_type, deadline_date, status, requirements
             FROM application_deadlines
             WHERE user_id = %s
             ORDER BY deadline_date
