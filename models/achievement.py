@@ -1,10 +1,10 @@
+import logging
+import json
+import traceback
 from typing import Dict, Optional, List
 from datetime import datetime
 from models.database import Database
 from utils.error_handling import DatabaseError, ValidationError
-import logging
-import json
-import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -24,70 +24,88 @@ class Achievement:
     def initialize_default_achievements(cls):
         """Create default achievements if they don't exist."""
         try:
-            # First, ensure the name column has a unique constraint
             db = Database()
-            db.execute("""
-                ALTER TABLE achievements 
-                ADD CONSTRAINT unique_achievement_name UNIQUE (name)
+
+            # First check if the constraint exists
+            constraint_exists = db.execute_one("""
+                SELECT COUNT(*) as count
+                FROM information_schema.table_constraints 
+                WHERE constraint_name = 'unique_achievement_name'
+                AND table_name = 'achievements'
             """)
-            logger.info("Added unique constraint to achievements name column")
-        except Exception as e:
-            # Ignore if constraint already exists
-            if "already exists" not in str(e):
-                error_trace = traceback.format_exc()
-                logger.error(f"Error adding unique constraint: {str(e)}\n{error_trace}")
-                raise DatabaseError(f"Failed to initialize achievements table: {str(e)}")
 
-        defaults = [
-            {
-                'name': 'Profile Pioneer',
-                'description': 'Complete your student profile with all information',
-                'icon_name': '👤',
-                'points': 100,
-                'category': 'profile',
-                'requirements': json.dumps({
-                    'profile_fields': ['gpa', 'interests', 'activities', 
-                                   'target_majors', 'target_schools']
-                })
-            },
-            {
-                'name': 'Chat Champion',
-                'description': 'Have 5 meaningful conversations with the AI counselor',
-                'icon_name': '💬',
-                'points': 150,
-                'category': 'engagement',
-                'requirements': json.dumps({
-                    'chat_sessions': 5
-                })
-            },
-            {
-                'name': 'Goal Getter',
-                'description': 'Set and track 3 college application goals',
-                'icon_name': '🎯',
-                'points': 200,
-                'category': 'planning',
-                'requirements': json.dumps({
-                    'goals_set': 3
-                })
-            }
-        ]
+            # Only add constraint if it doesn't exist
+            if not constraint_exists or constraint_exists['count'] == 0:
+                try:
+                    db.execute("""
+                        ALTER TABLE achievements 
+                        ADD CONSTRAINT unique_achievement_name UNIQUE (name)
+                    """)
+                    logger.info("Added unique constraint to achievements name column")
+                except Exception as e:
+                    if "already exists" not in str(e):
+                        error_trace = traceback.format_exc()
+                        logger.error(f"Error adding unique constraint: {str(e)}\n{error_trace}")
+                        raise DatabaseError(f"Failed to initialize achievements table: {str(e)}")
 
-        try:
+            # Define default achievements
+            defaults = [
+                {
+                    'name': 'Profile Pioneer',
+                    'description': 'Complete your student profile with all information',
+                    'icon_name': '👤',
+                    'points': 100,
+                    'category': 'profile',
+                    'requirements': json.dumps({
+                        'profile_fields': ['gpa', 'interests', 'activities', 
+                                       'target_majors', 'target_schools']
+                    })
+                },
+                {
+                    'name': 'Chat Champion',
+                    'description': 'Have 5 meaningful conversations with the AI counselor',
+                    'icon_name': '💬',
+                    'points': 150,
+                    'category': 'engagement',
+                    'requirements': json.dumps({
+                        'chat_sessions': 5
+                    })
+                },
+                {
+                    'name': 'Goal Getter',
+                    'description': 'Set and track 3 college application goals',
+                    'icon_name': '🎯',
+                    'points': 200,
+                    'category': 'planning',
+                    'requirements': json.dumps({
+                        'goals_set': 3
+                    })
+                }
+            ]
+
+            # Insert default achievements
             for achievement in defaults:
-                db.execute("""
-                    INSERT INTO achievements 
-                    (name, description, icon_name, points, category, requirements)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (name) DO NOTHING
-                """, (
-                    achievement['name'],
-                    achievement['description'],
-                    achievement['icon_name'],
-                    achievement['points'],
-                    achievement['category'],
-                    achievement['requirements']
-                ))
+                try:
+                    db.execute("""
+                        INSERT INTO achievements 
+                        (name, description, icon_name, points, category, requirements)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (name) DO NOTHING
+                    """, (
+                        achievement['name'],
+                        achievement['description'],
+                        achievement['icon_name'],
+                        achievement['points'],
+                        achievement['category'],
+                        achievement['requirements']
+                    ))
+                except Exception as e:
+                    error_trace = traceback.format_exc()
+                    logger.warning(f"Achievement {achievement['name']} already exists: {str(e)}\n{error_trace}")
+                    continue
+
             logger.info("Default achievements initialized successfully")
+
         except Exception as e:
             error_trace = traceback.format_exc()
             logger.error(f"Error initializing default achievements: {str(e)}\n{error_trace}")
