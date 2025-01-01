@@ -218,16 +218,17 @@ def render_program_browser(interests: List[str]):
                     if program['locations']:
                         st.markdown("**Locations:** " + ", ".join(program['locations']))
 
-                    # Show requirements
+                    # Show requirements without using an expander
+                    st.markdown("---")
+                    st.markdown("**📝 Requirements:**")
                     requirements = program['requirements']
-                    with st.expander("View Requirements"):
-                        for key, value in requirements.items():
-                            if isinstance(value, list):
-                                st.markdown(f"**{key.title()}:**")
-                                for item in value:
-                                    st.markdown(f"- {item}")
-                            else:
-                                st.markdown(f"**{key.title()}:** {value}")
+                    for key, value in requirements.items():
+                        if isinstance(value, list):
+                            st.markdown(f"**{key.title()}:**")
+                            for item in value:
+                                st.markdown(f"- {item}")
+                        else:
+                            st.markdown(f"**{key.title()}:** {value}")
 
                 with col2:
                     # Application status and actions
