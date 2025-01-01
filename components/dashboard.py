@@ -54,22 +54,22 @@ def render_dashboard():
                 show_error_message("Unable to load chat history", error_trace)
 
     with col2:
+        # Initialize active tab if not present
         if 'active_tab' not in st.session_state:
             st.session_state.active_tab = "Chat"
 
-        tab1, tab2, tab3 = st.tabs(["Chat", "College Matches", "Profile"])
+        # Create tabs
+        tabs = st.tabs(["Chat", "College Matches", "Profile"])
 
-        with tab1:
-            if st.session_state.active_tab == "Chat":
-                render_chat()
+        # Render content for each tab
+        with tabs[0]:  # Chat tab
+            render_chat()
 
-        with tab2:
-            if st.session_state.active_tab == "College Matches":
-                render_college_matches()
+        with tabs[1]:  # College Matches tab
+            render_college_matches()
 
-        with tab3:
-            if st.session_state.active_tab == "Profile":
-                render_profile()
+        with tabs[2]:  # Profile tab
+            render_profile()
 
     with col3:
         # Render achievements panel
