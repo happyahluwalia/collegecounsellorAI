@@ -449,6 +449,19 @@ wheels = [
 ]
 
 [[package]]
+name = "icalendar"
+version = "6.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+    { name = "tzdata" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/03/44/c9fdf8f6442e5bef2635f25dbb3d3ac12d5f2ecf5223bd94acaba51ceda4/icalendar-6.1.0.tar.gz", hash = "sha256:43c2db8632959d634f4e48f6e6131e706bf2cdddad488cf0b72fda079b796bad", size = 142307 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a5/b5/276bf1e5d0433144b27f707c40afe79e7e8863806837f42956053840a078/icalendar-6.1.0-py3-none-any.whl", hash = "sha256:46c09b774a6e6948495dafcb166dc15135c8259d0ae25491f154cbc822714b69", size = 198594 },
+]
+
+[[package]]
 name = "idna"
 version = "3.10"
 source = { registry = "https://pypi.org/simple" }
@@ -1510,6 +1523,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "google-auth" },
     { name = "google-auth-oauthlib" },
+    { name = "icalendar" },
     { name = "langchain" },
     { name = "langchain-community" },
     { name = "langgraph" },
@@ -1517,6 +1531,7 @@ dependencies = [
     { name = "pandas" },
     { name = "plotly" },
     { name = "psycopg2-binary" },
+    { name = "pytz" },
     { name = "streamlit" },
 ]
 
@@ -1524,6 +1539,7 @@ dependencies = [
 requires-dist = [
     { name = "google-auth", specifier = ">=2.37.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.2.1" },
+    { name = "icalendar", specifier = ">=6.1.0" },
     { name = "langchain", specifier = ">=0.3.13" },
     { name = "langchain-community", specifier = ">=0.3.13" },
     { name = "langgraph", specifier = ">=0.2.60" },
@@ -1531,6 +1547,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "plotly", specifier = ">=5.24.1" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
+    { name = "pytz", specifier = ">=2024.2" },
     { name = "streamlit", specifier = ">=1.41.1" },
 ]
 

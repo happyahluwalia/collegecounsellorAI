@@ -8,6 +8,8 @@ import logging
 import json
 import traceback
 import time
+from utils.calendar_export import generate_ics_file
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,61 @@ def show_error_message(error_message, error_trace=None):
     if error_trace:
         with st.expander("Show Error Details"):
             st.code(error_trace)
+
+def add_calendar_export_section(deadlines):
+    """Add calendar export buttons for deadlines."""
+    st.subheader("📅 Export Deadlines to Calendar")
+
+    if not deadlines:
+        st.info("Add some deadlines first to enable calendar export.")
+        return
+
+    try:
+        # Generate ICS file
+        calendar_bytes = generate_ics_file(deadlines)
+        b64_calendar = base64.b64encode(calendar_bytes).decode()
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            # Google Calendar
+            href = f"https://calendar.google.com/calendar/r/settings/export?data={b64_calendar}"
+            st.markdown(f'''
+                <a href="{href}" target="_blank">
+                    <button style="background-color:#4285F4;color:white;padding:8px 16px;border:none;border-radius:4px;cursor:pointer;">
+                        Export to Google Calendar
+                    </button>
+                </a>
+                ''',
+                unsafe_allow_html=True
+            )
+
+        with col2:
+            # Outlook Calendar
+            href = f"https://outlook.live.com/calendar/0/addcalendar?data={b64_calendar}"
+            st.markdown(f'''
+                <a href="{href}" target="_blank">
+                    <button style="background-color:#0078D4;color:white;padding:8px 16px;border:none;border-radius:4px;cursor:pointer;">
+                        Export to Outlook
+                    </button>
+                </a>
+                ''',
+                unsafe_allow_html=True
+            )
+
+        with col3:
+            # Apple Calendar (download .ics file)
+            st.download_button(
+                label="Download for Apple Calendar",
+                data=calendar_bytes,
+                file_name="college_deadlines.ics",
+                mime="text/calendar"
+            )
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Error in calendar export: {str(e)}\n{error_trace}")
+        show_error_message("Unable to generate calendar export.", error_trace)
 
 @handle_error
 def render_timeline():
@@ -104,6 +161,9 @@ def render_timeline_view():
             )
 
             st.plotly_chart(fig, use_container_width=True)
+
+            # Add calendar export section
+            add_calendar_export_section(deadlines)
 
             # Show upcoming deadlines
             st.subheader("📅 Upcoming Deadlines")
