@@ -121,86 +121,72 @@ def get_student_interests() -> List[str]:
     try:
         if not hasattr(st.session_state, 'user'):
             return []
-        
+
         db = Database()
         profile = db.execute_one("""
             SELECT interests, target_majors
             FROM profiles
             WHERE user_id = %s
         """, (st.session_state.user.id,))
-        
+
         if not profile:
             return []
-        
+
         interests = set()
         if profile['interests']:
             interests.update(profile['interests'])
         if profile['target_majors']:
             interests.update(profile['target_majors'])
-        
+
         return list(interests)
     except Exception as e:
         logger.error(f"Error getting student interests: {str(e)}")
         return []
 
-def render_internships():
-    """Render the internship programs tracker interface."""
-    if not hasattr(st.session_state, 'user'):
-        st.warning("Please log in to access the internship tracker.")
-        return
-
-    st.title("🎯 Summer Internship Tracker")
-
-    try:
-        # Initialize sample programs if needed
-        initialize_sample_programs()
-        
-        # Get student's interests
-        interests = get_student_interests()
-        
-        # Create tabs for different views
-        tab1, tab2 = st.tabs(["Browse Programs", "My Applications"])
-        
-        with tab1:
-            render_program_browser(interests)
-            
-        with tab2:
-            render_applications()
-            
-    except Exception as e:
-        error_trace = traceback.format_exc()
-        logger.error(f"Error in internship tracker: {str(e)}\n{error_trace}")
-        show_error_message("Something went wrong while loading the internship tracker.", error_trace)
-
 def render_program_browser(interests: List[str]):
     """Render the program browser with filters."""
     try:
         st.subheader("Available Programs")
-        
+
+        # Define available options
+        program_types = ["Summer Research", "Leadership Development", "Research & Development",
+                        "Internship", "Workshop", "Fellowship"]
+
+        subject_areas = [
+            "Mathematics", "Science", "Engineering", "Computer Science",
+            "Leadership", "Community Service", "Innovation", "Technology",
+            "Social Sciences", "Humanities", "Business", "Arts",
+            "Environmental Science", "Healthcare", "Biology", "Chemistry",
+            "Physics", "Economics", "Political Science", "Psychology"
+        ]
+
+        location_types = ["Remote", "In-person", "Hybrid"]
+
+        # Filter matching interests
+        matching_interests = [interest for interest in interests if interest in subject_areas]
+
         # Filters
         col1, col2, col3 = st.columns(3)
-        
+
         with col1:
             selected_types = st.multiselect(
                 "Program Type",
-                ["Summer Research", "Leadership Development", "Research & Development",
-                 "Internship", "Workshop", "Fellowship"],
+                program_types,
                 placeholder="All Types"
             )
-            
+
         with col2:
             selected_subjects = st.multiselect(
                 "Subject Areas",
-                ["Mathematics", "Science", "Engineering", "Leadership",
-                 "Community Service", "Innovation", "Technology"],
-                default=interests if interests else None,
+                subject_areas,
+                default=matching_interests if matching_interests else None,
                 placeholder="All Subjects"
             )
-            
+
         with col3:
             selected_locations = st.multiselect(
                 "Location Type",
-                ["Remote", "In-person", "Hybrid"],
+                location_types,
                 placeholder="All Locations"
             )
 
@@ -223,7 +209,7 @@ def render_program_browser(interests: List[str]):
         for program in programs:
             with st.expander(f"📋 {program['name']} - Deadline: {program['application_deadline'].strftime('%B %d, %Y')}"):
                 col1, col2 = st.columns([2, 1])
-                
+
                 with col1:
                     st.markdown(f"**Organization:** {program['organization']}")
                     st.markdown(f"**Description:** {program['description']}")
@@ -231,7 +217,7 @@ def render_program_browser(interests: List[str]):
                     st.markdown(f"**Location Type:** {program['location_type']}")
                     if program['locations']:
                         st.markdown("**Locations:** " + ", ".join(program['locations']))
-                    
+
                     # Show requirements
                     requirements = json.loads(program['requirements'])
                     with st.expander("View Requirements"):
@@ -242,7 +228,7 @@ def render_program_browser(interests: List[str]):
                                     st.markdown(f"- {item}")
                             else:
                                 st.markdown(f"**{key.title()}:** {value}")
-                
+
                 with col2:
                     # Application status and actions
                     status = db.execute_one("""
@@ -250,12 +236,12 @@ def render_program_browser(interests: List[str]):
                         FROM internship_applications
                         WHERE user_id = %s AND program_id = %s
                     """, (st.session_state.user.id, program['id']))
-                    
+
                     if status:
                         st.info(f"Status: {status['status'].title()}")
                         if status['application_date']:
                             st.write(f"Applied: {status['application_date'].strftime('%B %d, %Y')}")
-                    
+
                     # Action buttons
                     if st.button("Mark Interested", key=f"interested_{program['id']}"):
                         try:
@@ -269,13 +255,42 @@ def render_program_browser(interests: List[str]):
                             st.rerun()
                         except Exception as e:
                             st.error(f"Failed to update status: {str(e)}")
-                    
+
                     st.markdown(f"[Visit Website]({program['website_url']})")
 
     except Exception as e:
         error_trace = traceback.format_exc()
         logger.error(f"Error rendering program browser: {str(e)}\n{error_trace}")
         show_error_message("Unable to display internship programs.", error_trace)
+
+def render_internships():
+    """Render the internship programs tracker interface."""
+    if not hasattr(st.session_state, 'user'):
+        st.warning("Please log in to access the internship tracker.")
+        return
+
+    st.title("🎯 Summer Internship Tracker")
+
+    try:
+        # Initialize sample programs if needed
+        initialize_sample_programs()
+
+        # Get student's interests
+        interests = get_student_interests()
+
+        # Create tabs for different views
+        tab1, tab2 = st.tabs(["Browse Programs", "My Applications"])
+
+        with tab1:
+            render_program_browser(interests)
+
+        with tab2:
+            render_applications()
+
+    except Exception as e:
+        error_trace = traceback.format_exc()
+        logger.error(f"Error in internship tracker: {str(e)}\n{error_trace}")
+        show_error_message("Something went wrong while loading the internship tracker.", error_trace)
 
 def render_applications():
     """Render the student's internship applications."""
