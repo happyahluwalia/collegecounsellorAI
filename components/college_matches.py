@@ -183,14 +183,14 @@ def generate_recommendations(preferences):
 
         # Generate recommendations
         matches_json = counselor.generate_college_matches(enhanced_profile)
-        matches = json.loads(matches_json)
+        matches = json.loads(matches_json)  # Convert JSON string to dict
 
-        # Store in database with preferences
+        # Store in database
         db = st.session_state.user.db
         db.execute("""
             INSERT INTO college_matches (user_id, matches)
             VALUES (%s, %s)
-        """, (st.session_state.user.id, matches_json))
+        """, (st.session_state.user.id, matches_json))  # Store original JSON string
 
         logger.info(f"Generated new college matches for user {st.session_state.user.id} with preferences")
         st.session_state.walkthrough_complete = True
@@ -238,19 +238,20 @@ def render_college_matches():
                     LIMIT 1
                 """, (st.session_state.user.id,))
 
+                matches = None
                 # Generate new matches if needed
                 if not cached_record or force_refresh:
                     with st.spinner("Generating personalized college matches..."):
                         counselor = CounselorAgent()
                         matches_json = counselor.generate_college_matches(profile)
 
-                        # Validate JSON structure before storing
                         try:
+                            # Parse and validate JSON
                             matches = json.loads(matches_json)
                             if not isinstance(matches, dict) or 'colleges' not in matches:
                                 raise ValueError("Invalid matches structure")
 
-                            # Store in database
+                            # Store in database as JSON string
                             db.execute("""
                                 INSERT INTO college_matches (user_id, matches)
                                 VALUES (%s, %s)
@@ -265,11 +266,17 @@ def render_college_matches():
                             raise APIError("Invalid college recommendations format")
                 else:
                     try:
-                        # Load and validate cached matches
-                        matches = json.loads(cached_record['matches'])
+                        # Handle cached matches - could be string or dict
+                        cached_matches = cached_record['matches']
+                        if isinstance(cached_matches, str):
+                            matches = json.loads(cached_matches)
+                        elif isinstance(cached_matches, dict):
+                            matches = cached_matches
+                        else:
+                            raise ValueError(f"Unexpected matches type: {type(cached_matches)}")
+
                         if not isinstance(matches, dict) or 'colleges' not in matches:
-                            logger.error("Invalid cached matches structure")
-                            raise ValueError("Invalid cached data structure")
+                            raise ValueError("Invalid cached matches structure")
 
                         st.caption(f"Last updated: {cached_record['updated_at'].strftime('%Y-%m-%d %H:%M')}")
                     except (json.JSONDecodeError, ValueError) as e:
@@ -277,49 +284,56 @@ def render_college_matches():
                         raise DatabaseError("Error loading cached recommendations")
 
                 # Display college matches
-                for college in matches.get('colleges', []):
-                    with st.expander(f"📚 {college['name']} - Match Score: {college['match_score']:.0%}"):
-                        col1, col2 = st.columns(2)
+                if matches and 'colleges' in matches:
+                    for college in matches['colleges']:
+                        with st.expander(f"📚 {college['name']} - Match Score: {college['match_score']:.0%}"):
+                            col1, col2 = st.columns(2)
 
-                        with col1:
-                            st.markdown("### Why it's a good fit")
-                            st.write(college['why_good_fit'])
+                            with col1:
+                                st.markdown("### Why it's a good fit")
+                                st.write(college['why_good_fit'])
 
-                            st.markdown("### Program Strengths")
-                            for strength in college['program_strengths']:
-                                st.markdown(f"- {strength}")
+                                st.markdown("### Program Strengths")
+                                for strength in college['program_strengths']:
+                                    st.markdown(f"- {strength}")
 
-                        with col2:
-                            st.markdown("### Academic Fit")
-                            st.write(college['academic_fit'])
+                            with col2:
+                                st.markdown("### Academic Fit")
+                                st.write(college['academic_fit'])
 
-                            st.markdown("### Admission Stats")
-                            stats = college['admission_stats']
-                            st.metric("Acceptance Rate", f"{stats['acceptance_rate']:.1%}")
-                            st.write(f"GPA Range: {stats['gpa_range']['min']:.1f} - {stats['gpa_range']['max']:.1f}")
+                                st.markdown("### Admission Stats")
+                                stats = college['admission_stats']
+                                st.metric("Acceptance Rate", f"{stats['acceptance_rate']:.1%}")
+                                st.write(f"GPA Range: {stats['gpa_range']['min']:.1f} - {stats['gpa_range']['max']:.1f}")
 
-                            st.markdown("### Extracurricular Matches")
-                            for match in college['extracurricular_matches']:
-                                st.markdown(f"- {match}")
+                                st.markdown("### Extracurricular Matches")
+                                for match in college['extracurricular_matches']:
+                                    st.markdown(f"- {match}")
 
-                logger.info(f"Displayed college matches for user {st.session_state.user.id}")
+                    logger.info(f"Displayed college matches for user {st.session_state.user.id}")
+                else:
+                    st.warning("No college matches found. Try refreshing or generating new matches.")
 
             except (json.JSONDecodeError, ValueError) as e:
-                logger.error(f"JSON structure error: {str(e)}")
-                show_error_message("Error processing college matches data", traceback.format_exc())
+                error_trace = traceback.format_exc()
+                logger.error(f"JSON structure error: {str(e)}\n{error_trace}")
+                show_error_message("Error processing college matches data", error_trace)
             except APIError as e:
-                logger.error(f"API error: {str(e)}")
-                show_error_message(str(e), traceback.format_exc())
+                error_trace = traceback.format_exc()
+                logger.error(f"API error: {str(e)}\n{error_trace}")
+                show_error_message(str(e), error_trace)
             except DatabaseError as e:
-                logger.error(f"Database error: {str(e)}")
-                show_error_message(str(e), traceback.format_exc())
+                error_trace = traceback.format_exc()
+                logger.error(f"Database error: {str(e)}\n{error_trace}")
+                show_error_message(str(e), error_trace)
 
         with tab2:
             show_walkthrough()
 
     except Exception as e:
-        logger.error(f"Unexpected error in college matches: {str(e)}")
-        show_error_message("Something went wrong while displaying college matches.", traceback.format_exc())
+        error_trace = traceback.format_exc()
+        logger.error(f"Unexpected error in college matches: {str(e)}\n{error_trace}")
+        show_error_message("Something went wrong while displaying college matches.", error_trace)
 
 if __name__ == "__main__":
     render_college_matches()
