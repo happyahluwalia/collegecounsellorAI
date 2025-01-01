@@ -156,6 +156,38 @@ class Database:
                         is_sent BOOLEAN DEFAULT FALSE,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
+
+                    -- New tables for internship tracking
+                    CREATE TABLE IF NOT EXISTS internship_programs (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        organization VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        website_url TEXT,
+                        program_type VARCHAR(50),
+                        subject_areas TEXT[],
+                        grade_levels TEXT[],
+                        application_deadline DATE,
+                        program_duration VARCHAR(100),
+                        location_type VARCHAR(50),
+                        locations TEXT[],
+                        requirements JSONB,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );
+
+                    CREATE TABLE IF NOT EXISTS internship_applications (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER REFERENCES users(id),
+                        program_id INTEGER REFERENCES internship_programs(id),
+                        status VARCHAR(50) DEFAULT 'interested',
+                        application_date DATE,
+                        notes TEXT,
+                        documents JSONB DEFAULT '{}',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(user_id, program_id)
+                    );
                 """)
                 self.conn.commit()
                 logger.info("Database tables created/verified successfully")
