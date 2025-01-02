@@ -3,6 +3,7 @@ from agents.orchestrator import AgentOrchestrator
 from utils.error_handling import handle_error, DatabaseError, ValidationError
 import logging
 import traceback
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -101,10 +102,16 @@ def render_chat():
                         try:
                             # Process message through agent orchestrator
                             logger.info(f"Processing message through agent orchestrator: {prompt[:100]}...")
-                            response = st.session_state.agent_orchestrator.process_message(
-                                prompt,
-                                st.session_state.user.id if hasattr(st.session_state, 'user') else None
+                            # Run the async function in the event loop
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            response = loop.run_until_complete(
+                                st.session_state.agent_orchestrator.process_message(
+                                    prompt,
+                                    st.session_state.user.id if hasattr(st.session_state, 'user') else None
+                                )
                             )
+                            loop.close()
                             logger.info("Successfully got response from agent orchestrator")
 
                             st.markdown(response)
