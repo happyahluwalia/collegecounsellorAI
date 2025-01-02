@@ -50,20 +50,20 @@ def initialize_sample_programs():
 
             for program in sample_programs:
                 try:
-                    # Convert Python objects to JSON strings
+                    # Convert requirements to JSON, leave arrays as arrays
                     program_data = {
                         'name': program['name'],
                         'organization': program['organization'],
                         'description': program['description'],
                         'website_url': program['website_url'],
                         'program_type': program['program_type'],
-                        'subject_areas': json.dumps(program['subject_areas']),
-                        'grade_levels': json.dumps(program['grade_levels']),
+                        'subject_areas': program['subject_areas'],  # Keep as array
+                        'grade_levels': program['grade_levels'],    # Keep as array
                         'application_deadline': program['application_deadline'],
                         'program_duration': program['program_duration'],
                         'location_type': program['location_type'],
-                        'locations': json.dumps(program['locations']),
-                        'requirements': json.dumps(program['requirements'])
+                        'locations': program['locations'],          # Keep as array
+                        'requirements': json.dumps(program['requirements'])  # Convert dict to JSON
                     }
 
                     db.execute("""
@@ -73,9 +73,9 @@ def initialize_sample_programs():
                             program_duration, location_type, locations, requirements
                         ) VALUES (
                             %(name)s, %(organization)s, %(description)s, %(website_url)s,
-                            %(program_type)s, %(subject_areas)s::jsonb, %(grade_levels)s::jsonb,
+                            %(program_type)s, %(subject_areas)s, %(grade_levels)s,
                             %(application_deadline)s, %(program_duration)s, %(location_type)s,
-                            %(locations)s::jsonb, %(requirements)s::jsonb
+                            %(locations)s, %(requirements)s::jsonb
                         )
                     """, program_data)
 
@@ -163,7 +163,7 @@ def render_program_browser(interests: List[str]):
                 placeholder="All Locations"
             )
 
-        # Fetch programs with filters using parameterized query
+        # Fetch programs with filters
         db = Database()
         query_params = {}
         conditions = []
@@ -176,7 +176,7 @@ def render_program_browser(interests: List[str]):
         if selected_subjects:
             conditions.append("""
                 EXISTS (
-                    SELECT 1 FROM jsonb_array_elements_text(subject_areas) subject
+                    SELECT 1 FROM unnest(subject_areas) subject
                     WHERE subject = ANY(%(subjects)s)
                 )
             """)
@@ -208,7 +208,8 @@ def render_program_browser(interests: List[str]):
                 st.markdown(f"**Duration:** {program['program_duration']}")
                 st.markdown(f"**Location Type:** {program['location_type']}")
 
-                locations = json.loads(program['locations'])
+                # No need for json.loads since locations is already an array
+                locations = program['locations']
                 if locations:
                     st.markdown("**Locations:** " + ", ".join(locations))
 
@@ -236,8 +237,8 @@ def render_program_browser(interests: List[str]):
                     if status['application_date']:
                         st.write(f"Applied: {status['application_date'].strftime('%B %d, %Y')}")
 
-                # Action buttons
-                button_key = f"interested_{program['id']}"
+                # Action buttons with unique keys
+                button_key = f"program_interested_{program['id']}"
                 if st.button("Mark Interested", key=button_key):
                     try:
                         db.execute("""
@@ -305,8 +306,8 @@ def render_applications():
                             if app['application_date']:
                                 st.markdown(f"**Applied:** {app['application_date'].strftime('%B %d, %Y')}")
 
-                            # Notes editor
-                            notes_key = f"notes_{app['id']}"
+                            # Notes editor with unique key
+                            notes_key = f"app_notes_{app['id']}_{status}"
                             new_notes = st.text_area(
                                 "Application Notes",
                                 value=app['notes'] or '',
@@ -314,7 +315,7 @@ def render_applications():
                             )
 
                             if new_notes != app['notes']:
-                                update_key = f"update_notes_{app['id']}"
+                                update_key = f"update_notes_{app['id']}_{status}"
                                 if st.button("Update Notes", key=update_key):
                                     try:
                                         db.execute("""
@@ -328,8 +329,8 @@ def render_applications():
                                         st.error(f"Failed to update notes: {str(e)}")
 
                         with col2:
-                            # Status updater
-                            status_key = f"status_{app['id']}"
+                            # Status updater with unique key
+                            status_key = f"app_status_{app['id']}_{status}"
                             new_status = st.selectbox(
                                 "Update Status",
                                 status_order,
