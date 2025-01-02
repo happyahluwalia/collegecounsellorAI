@@ -151,13 +151,13 @@ def render_program_browser(interests: List[str]):
         query = """
             SELECT * FROM internship_programs
             WHERE (CARDINALITY(%s::text[]) = 0 OR program_type = ANY(%s))
-            AND (CARDINALITY(%s::text[]) = 0 OR subject_areas && %s::jsonb)
+            AND (CARDINALITY(%s::text[]) = 0 OR subject_areas::jsonb ?| %s)
             AND (CARDINALITY(%s::text[]) = 0 OR location_type = ANY(%s))
             ORDER BY application_deadline
         """
         programs = db.execute(query, (
             selected_types, selected_types,
-            selected_subjects, json.dumps(selected_subjects),
+            selected_subjects, selected_subjects,
             selected_locations, selected_locations
         ))
 
