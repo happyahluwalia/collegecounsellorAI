@@ -4,6 +4,7 @@ from models.database import Database
 from typing import Dict, List, Optional
 import json
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ def search_institutions(search_term: str) -> List[Dict]:
             WHERE LOWER(institution_name) LIKE LOWER(%s)
             ORDER BY institution_name
             LIMIT 10
-        """, (f"%{search_term}%",))
+        """, (f"{search_term}%",))  # Changed from f"%{search_term}%" to f"{search_term}%"
         return results
     except Exception as e:
         logger.error(f"Error searching institutions: {str(e)}")
@@ -98,7 +99,8 @@ def get_institution_details(institution_id: int) -> Optional[Dict]:
     try:
         db = Database()
         details = db.execute_one("""
-            SELECT i.*,
+            SELECT 
+                i.*,
                 CASE WHEN ufi.id IS NOT NULL THEN true ELSE false END as is_favorite
             FROM institutions i
             LEFT JOIN user_favorite_institutions ufi 
@@ -106,76 +108,104 @@ def get_institution_details(institution_id: int) -> Optional[Dict]:
                 AND ufi.user_id = %s
             WHERE i.unitid = %s
         """, (st.session_state.user.id, institution_id))
+
+        if not details:
+            logger.error(f"No institution found with ID {institution_id}")
+            return None
+
+        # Ensure JSON fields are properly parsed
+        for field in ['degree_levels', 'program_offerings']:
+            if details.get(field):
+                try:
+                    if isinstance(details[field], str):
+                        details[field] = json.loads(details[field])
+                    elif not isinstance(details[field], (list, dict)):
+                        details[field] = []
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to parse {field} JSON for institution {institution_id}")
+                    details[field] = []
+
         return details
     except Exception as e:
-        logger.error(f"Error fetching institution details: {str(e)}")
+        logger.error(f"Error fetching institution details: {str(e)}\n{traceback.format_exc()}")
         return None
 
 def render_institution_details(institution_id: int):
     """Render detailed view of a specific institution."""
     details = get_institution_details(institution_id)
     if not details:
-        st.error("Failed to load institution details.")
+        st.error("Unable to load institution details. Please try again.")
+        if st.button("← Back to List"):
+            st.session_state.selected_institution = None
+            st.rerun()
         return
 
-    # Back button
-    if st.button("← Back to List"):
-        st.session_state.selected_institution = None
-        st.rerun()
+    try:
+        # Back button
+        if st.button("← Back to List"):
+            st.session_state.selected_institution = None
+            st.rerun()
 
-    # Header with favorite button
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.title(details['institution_name'])
-    with col2:
-        if st.button("❤️" if details['is_favorite'] else "🤍", 
-                   key=f"fav_detail_{institution_id}"):
-            toggle_favorite(institution_id)
+        # Header with favorite button
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.title(details['institution_name'])
+        with col2:
+            if st.button("❤️" if details['is_favorite'] else "🤍", 
+                       key=f"fav_detail_{institution_id}"):
+                toggle_favorite(institution_id)
 
-    # Basic Information
-    st.subheader("📍 Location & Contact")
-    st.markdown(f"""
-        - **Address:** {details['city']}, {details['state_abbreviation']} {details['zip']}
-        - **Institution Type:** {details['control_of_institution']}
-        - **Region:** {details.get('geographic_region', 'Not specified')}
-    """)
+        # Basic Information
+        st.subheader("📍 Location & Contact")
+        st.markdown(f"""
+            - **Address:** {details['city']}, {details['state_abbreviation']} {details.get('zip', 'N/A')}
+            - **Institution Type:** {details.get('control_of_institution', 'Not specified')}
+            - **Region:** {details.get('geographic_region', 'Not specified')}
+        """)
 
-    # Academic Information
-    st.subheader("🎓 Academic Profile")
-    cols = st.columns(2)
-    with cols[0]:
-        st.markdown("**Degrees Offered:**")
-        if details.get('degree_levels'):
-            for degree in json.loads(details['degree_levels']):
-                st.markdown(f"- {degree}")
-        else:
-            st.markdown("- Information not available")
-
-    with cols[1]:
-        st.markdown("**Programs & Specializations:**")
-        if details.get('program_offerings'):
-            for program in json.loads(details['program_offerings']):
-                st.markdown(f"- {program}")
-        else:
-            st.markdown("- Information not available")
-
-    # Costs & Financial Information
-    st.subheader("💰 Costs & Financial Aid")
-    if details.get('tuition_and_fees') or details.get('typical_housing_charge'):
+        # Academic Information
+        st.subheader("🎓 Academic Profile")
         cols = st.columns(2)
         with cols[0]:
-            if details.get('tuition_and_fees'):
-                st.metric("Annual Tuition & Fees", f"${details['tuition_and_fees']:,.2f}")
-        with cols[1]:
-            if details.get('typical_housing_charge'):
-                st.metric("Housing Cost", f"${details['typical_housing_charge']:,.2f}")
-    else:
-        st.info("Cost information not available")
+            st.markdown("**Degrees Offered:**")
+            if details.get('degree_levels') and isinstance(details['degree_levels'], list):
+                for degree in details['degree_levels']:
+                    st.markdown(f"- {degree}")
+            else:
+                st.markdown("- Information not available")
 
-    # Additional Information
-    if details.get('additional_information'):
-        st.subheader("ℹ️ Additional Information")
-        st.markdown(details['additional_information'])
+        with cols[1]:
+            st.markdown("**Programs & Specializations:**")
+            if details.get('program_offerings') and isinstance(details['program_offerings'], list):
+                for program in details['program_offerings']:
+                    st.markdown(f"- {program}")
+            else:
+                st.markdown("- Information not available")
+
+        # Costs & Financial Information
+        st.subheader("💰 Costs & Financial Aid")
+        if details.get('tuition_and_fees') or details.get('typical_housing_charge'):
+            cols = st.columns(2)
+            with cols[0]:
+                if details.get('tuition_and_fees'):
+                    st.metric("Annual Tuition & Fees", f"${float(details['tuition_and_fees']):,.2f}")
+            with cols[1]:
+                if details.get('typical_housing_charge'):
+                    st.metric("Housing Cost", f"${float(details['typical_housing_charge']):,.2f}")
+        else:
+            st.info("Cost information not available")
+
+        # Additional Information
+        if details.get('additional_information'):
+            st.subheader("ℹ️ Additional Information")
+            st.markdown(details['additional_information'])
+
+    except Exception as e:
+        logger.error(f"Error rendering institution details: {str(e)}\n{traceback.format_exc()}")
+        st.error("Something went wrong while displaying institution details. Please try again.")
+        if st.button("← Back to List", key="error_back"):
+            st.session_state.selected_institution = None
+            st.rerun()
 
 def render_institutions_list(filters: Dict):
     """Render paginated list of institutions with filters."""
