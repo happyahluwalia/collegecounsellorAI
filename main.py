@@ -1,6 +1,6 @@
 import streamlit as st
 from components.auth import init_auth, login_page, handle_oauth_callback
-from components.dashboard import render_dashboard
+import components.dashboard as dashboard
 from utils.styles import apply_custom_styles
 from utils.constants import APP_CONFIG
 
@@ -26,7 +26,7 @@ def main():
     if not st.session_state.user:
         login_page()
     else:
-        render_dashboard()
+        dashboard.render_dashboard()
 
 if __name__ == "__main__":
     main()
