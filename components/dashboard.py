@@ -86,3 +86,8 @@ def render_dashboard():
     with col3:
         # Render achievements panel
         render_achievements()
+
+# Make render_dashboard available at the module level
+# This ensures it can be imported directly
+if not globals().get('render_dashboard'):
+    globals()['render_dashboard'] = render_dashboard
