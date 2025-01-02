@@ -4,9 +4,10 @@ Manages communication and coordination between specialized agents.
 """
 
 import logging
-from typing import Dict, Any, TypeVar, List
+from typing import Dict, Any, List, TypeVar, Annotated
 from datetime import datetime
-from langgraph.graph import StateGraph, GraphState
+from langgraph.graph import Graph
+from langgraph.prebuilt.tools import ToolExecutor
 from .primary_counselor import PrimaryCounselorAgent
 from .strategic_planning import StrategicPlanningAgent
 from .base import AgentError
@@ -14,8 +15,8 @@ import json
 
 logger = logging.getLogger(__name__)
 
-# Define state type
-S = TypeVar("S", bound=GraphState)
+# Define state type for graph
+StateType = Dict[str, Any]
 
 class AgentMessage:
     """Message format for inter-agent communication"""
@@ -41,11 +42,10 @@ class AgentOrchestrator:
         self.agents = {
             "counselor": PrimaryCounselorAgent(),
             "strategic": StrategicPlanningAgent(),
-            # Initialize other agents as they're implemented
         }
 
         # Initialize LangGraph
-        self.graph = StateGraph()
+        self.graph = Graph()
 
         # Add nodes for each agent
         for agent_name, agent in self.agents.items():
@@ -56,37 +56,40 @@ class AgentOrchestrator:
 
     def _create_agent_node(self, agent):
         """Create a node function for an agent"""
-        def node_fn(state: GraphState) -> GraphState:
-            # Process the state with the agent
+        def node_fn(state: StateType) -> StateType:
             try:
+                # Process the state with the agent
                 response = agent.get_response(
-                    state.messages[-1]["content"]["message"],
-                    state.messages[-1]["metadata"].get("context")
+                    state['messages'][-1]["content"]["message"],
+                    state['messages'][-1]["metadata"].get("context")
                 )
-                state.messages.append(
+
+                # Update state with new message
+                state['messages'].append(
                     AgentMessage(
                         sender=agent.__class__.__name__,
                         content={"response": response},
                         metadata={"timestamp": datetime.now().isoformat()}
                     ).to_dict()
                 )
+
+                return state
             except Exception as e:
                 logger.error(f"Error in agent {agent.__class__.__name__}: {str(e)}")
-                state.messages.append(
+                state['messages'].append(
                     AgentMessage(
                         sender=agent.__class__.__name__,
                         content={"error": str(e)},
                         metadata={"timestamp": datetime.now().isoformat()}
                     ).to_dict()
                 )
-            return state
+                return state
         return node_fn
 
     def _setup_communication_paths(self):
         """Setup the communication paths between agents"""
-        # Primary paths
+        # Define the channel for agent communication
         self.graph.add_edge("counselor", "strategic")
-        # Add more edges as we implement other agents
 
     async def process_message(self, message: str, user_id: int) -> str:
         """Process a user message through the agent system"""
@@ -136,7 +139,8 @@ class AgentOrchestrator:
         try:
             if name in self.agents:
                 del self.agents[name]
-                self.graph.remove_node(name)
+                # Note: Current version of langgraph doesn't support node removal
+                # We'll just log it
                 logger.info(f"Removed agent: {name}")
         except Exception as e:
             logger.error(f"Error removing agent {name}: {str(e)}")
@@ -147,21 +151,3 @@ class AgentOrchestrator:
         return {
             name: "active" for name in self.agents.keys()
         }
-
-# Example usage of the orchestrator:
-"""
-orchestrator = AgentOrchestrator()
-
-# Process a user message
-response = await orchestrator.process_message(
-    "I need help planning my college applications",
-    user_id=123
-)
-
-# Add a new agent
-new_agent = EssayDevelopmentAgent()
-orchestrator.add_agent("essay", new_agent)
-
-# Get system status
-status = orchestrator.get_agent_status()
-"""
