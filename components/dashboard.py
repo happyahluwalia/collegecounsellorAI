@@ -61,7 +61,7 @@ def render_dashboard():
         if 'active_tab' not in st.session_state:
             st.session_state.active_tab = "Chat"
 
-        # Create tabs with College Explorer added
+        # Create tabs
         tabs = st.tabs(["Chat", "College Explorer", "College Matches", "Timeline", "Internships", "Profile"])
 
         # Render content for each tab
@@ -87,5 +87,5 @@ def render_dashboard():
         # Render achievements panel
         render_achievements()
 
-# Export the dashboard renderer
+# Export the dashboard renderer - it needs to be at the module level
 __all__ = ['render_dashboard']
