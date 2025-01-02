@@ -4,6 +4,9 @@ import pandas as pd
 import logging
 from datetime import datetime
 import json
+from typing import Optional, Dict, Any, List
+import psycopg2
+from psycopg2.extras import execute_values
 
 # Add project root to Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
@@ -23,31 +26,47 @@ class CollegeDataImporter:
         self.csv_file = csv_file
         self.db = Database()
         self.data = None
+        self.skipped_records = []
+        self.batch_size = 1000  # Number of records to insert at once
 
     def read_csv(self):
         """Read the CSV file into a pandas DataFrame with robust error handling"""
         try:
             logger.info(f"Reading CSV file: {self.csv_file}")
+
+            # Define columns we need with their expected types
+            dtype_dict = {
+                'unitid': 'Int64',
+                'institution name': str,
+                'HD2023.Street address or post office box': str,
+                'HD2023.City location of institution': str,
+                'HD2023.ZIP code': str,
+                'HD2023.State abbreviation': str,
+                'HD2023.Control of institution': str,
+                'HD2023.Sector of institution': str,
+                'IC2023.Housing capacity': 'Int64',
+                'IC2023.Typical housing charges for an academic year': 'float64',
+                'IC2023.Typical food charge for academic year': 'float64',
+                'IC2023mission.Mission statement': str,
+                'IC2023.Undergraduate application fee': 'float64',
+                'HD2023.Financial aid office web address': str,
+                'HD2023.Admissions office web address': str,
+                'HD2023.Online application web address': str,
+                'HD2023.Net price calculator web address': str
+            }
+
             self.data = pd.read_csv(
                 self.csv_file,
-                quoting=1,  # QUOTE_ALL
-                escapechar='\\',
-                on_bad_lines='warn',
-                encoding='utf-8'
+                dtype=dtype_dict,
+                na_values=['', 'nan', 'NULL', 'None', '#N/A'],
+                keep_default_na=True,
+                on_bad_lines='skip'
             )
-            # Verify columns match expected schema
-            required_cols = [
-                'unitid', 'institution name', 'HD2023.Street address or post office box',
-                'HD2023.City location of institution', 'HD2023.ZIP code',
-                'HD2023.State abbreviation', 'HD2023.Control of institution'
-            ]
-            missing_cols = [col for col in required_cols if col not in self.data.columns]
-            if missing_cols:
-                raise ValueError(f"Missing required columns: {missing_cols}")
 
             logger.info(f"Successfully read {len(self.data)} rows")
+
         except Exception as e:
-            logger.error(f"Error reading CSV file: {e}")
+            logger.error(f"Error reading CSV file: {str(e)}")
             raise
 
     def clean_data(self):
@@ -55,184 +74,128 @@ class CollegeDataImporter:
         try:
             logger.info("Cleaning data...")
 
-            # Replace empty strings with None
-            self.data = self.data.replace(r'^\s*$', None, regex=True)
+            # Save records with NA values in critical fields to skipped_records
+            critical_fields = [
+                'unitid', 'institution name', 'HD2023.City location of institution',
+                'HD2023.State abbreviation'
+            ]
 
-            # Convert percentage strings to decimals
+            # Identify rows with NA values in critical fields
+            na_mask = self.data[critical_fields].isna().any(axis=1)
+            self.skipped_records = self.data[na_mask].copy()
+            self.data = self.data[~na_mask].copy()
+
+            # Save skipped records to CSV
+            if not self.skipped_records.empty:
+                skipped_file = self.csv_file.replace('.csv', '_skipped.csv')
+                self.skipped_records.to_csv(skipped_file, index=False)
+                logger.info(f"Saved {len(self.skipped_records)} skipped records to {skipped_file}")
+
+            # Convert all remaining NaN values to None/NULL
             for col in self.data.columns:
-                if 'percent' in col.lower():
-                    # Convert column to string first
-                    str_series = self.data[col].astype(str)
-                    # Remove '%' and convert to numeric, handling both string and numeric inputs
-                    self.data[col] = pd.to_numeric(
-                        str_series.str.rstrip('%').replace('nan', ''),
-                        errors='coerce'
-                    ) / 100
+                # Convert NaN to None
+                mask = self.data[col].isna()
+                self.data.loc[mask, col] = None
 
-            # Convert currency strings to numeric
-            for col in self.data.columns:
-                if any(term in col.lower() for term in ['price', 'cost', 'fee', 'charge']):
-                    # Convert to string first
-                    str_series = self.data[col].astype(str)
-                    # Remove currency symbols and commas, then convert to numeric
-                    self.data[col] = pd.to_numeric(
-                        str_series.replace('[\$,]', '', regex=True).replace('nan', ''),
-                        errors='coerce'
-                    )
+                # Handle numeric columns specially
+                if col in ['IC2023.Housing capacity', 'IC2023.Typical housing charges for an academic year',
+                          'IC2023.Typical food charge for academic year', 'IC2023.Undergraduate application fee']:
+                    self.data[col] = pd.to_numeric(self.data[col], errors='coerce')
+                    self.data[col] = self.data[col].where(pd.notnull(self.data[col]), None)
 
-            logger.info("Data cleaning completed")
+            logger.info(f"Data cleaning completed. {len(self.data)} records ready for import")
+
         except Exception as e:
-            logger.error(f"Error cleaning data: {e}")
+            logger.error(f"Error cleaning data: {str(e)}")
             raise
 
     def import_institutions(self):
-        """Import data into the institutions table"""
+        """Import data into the institutions table using batch processing"""
         try:
             logger.info("Importing institutions data...")
+            successful_imports = 0
+            failed_imports = 0
 
-            # Convert DataFrame to list of dictionaries for batch processing
-            records = self.data.to_dict('records')
-
-            for record in records:
+            # Convert DataFrame to list of tuples for batch insert
+            values = []
+            for idx, row in self.data.iterrows():
                 try:
-                    self.db.execute("""
-                        INSERT INTO institutions (
-                            unitid, institution_name, street_address, city, 
-                            zip_code, state_abbreviation, control_of_institution,
-                            sector_of_institution, housing_capacity, typical_housing_charge,
-                            typical_food_charge, mission_statement, undergraduate_application_fee,
-                            financial_aid_office_url, admissions_office_url,
-                            online_application_url, net_price_calculator_url
-                        ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    # Convert pandas values to Python native types
+                    record = (
+                        int(row['unitid']) if pd.notnull(row['unitid']) else None,
+                        str(row['institution name']) if pd.notnull(row['institution name']) else None,
+                        str(row['HD2023.Street address or post office box']) if pd.notnull(row['HD2023.Street address or post office box']) else None,
+                        str(row['HD2023.City location of institution']) if pd.notnull(row['HD2023.City location of institution']) else None,
+                        str(row['HD2023.ZIP code']) if pd.notnull(row['HD2023.ZIP code']) else None,
+                        str(row['HD2023.State abbreviation']) if pd.notnull(row['HD2023.State abbreviation']) else None,
+                        str(row['HD2023.Control of institution']) if pd.notnull(row['HD2023.Control of institution']) else None,
+                        str(row['HD2023.Sector of institution']) if pd.notnull(row['HD2023.Sector of institution']) else None,
+                        int(row['IC2023.Housing capacity']) if pd.notnull(row['IC2023.Housing capacity']) else None,
+                        float(row['IC2023.Typical housing charges for an academic year']) if pd.notnull(row['IC2023.Typical housing charges for an academic year']) else None,
+                        float(row['IC2023.Typical food charge for academic year']) if pd.notnull(row['IC2023.Typical food charge for academic year']) else None,
+                        str(row['IC2023mission.Mission statement']) if pd.notnull(row['IC2023mission.Mission statement']) else None,
+                        float(row['IC2023.Undergraduate application fee']) if pd.notnull(row['IC2023.Undergraduate application fee']) else None,
+                        str(row['HD2023.Financial aid office web address']) if pd.notnull(row['HD2023.Financial aid office web address']) else None,
+                        str(row['HD2023.Admissions office web address']) if pd.notnull(row['HD2023.Admissions office web address']) else None,
+                        str(row['HD2023.Online application web address']) if pd.notnull(row['HD2023.Online application web address']) else None,
+                        str(row['HD2023.Net price calculator web address']) if pd.notnull(row['HD2023.Net price calculator web address']) else None,
+                    )
+                    values.append(record)
+                except Exception as e:
+                    logger.error(f"Error preparing record at index {idx}: {str(e)}")
+                    failed_imports += 1
+                    continue
+
+            # Process in batches
+            for i in range(0, len(values), self.batch_size):
+                batch = values[i:i + self.batch_size]
+                try:
+                    with self.db.conn.cursor() as cur:
+                        execute_values(
+                            cur,
+                            """
+                            INSERT INTO institutions (
+                                unitid, institution_name, street_address, city,
+                                zip_code, state_abbreviation, control_of_institution,
+                                sector_of_institution, housing_capacity, typical_housing_charge,
+                                typical_food_charge, mission_statement, undergraduate_application_fee,
+                                financial_aid_office_url, admissions_office_url,
+                                online_application_url, net_price_calculator_url
+                            ) VALUES %s
+                            ON CONFLICT (unitid) DO UPDATE SET
+                                institution_name = EXCLUDED.institution_name,
+                                street_address = EXCLUDED.street_address,
+                                city = EXCLUDED.city,
+                                zip_code = EXCLUDED.zip_code,
+                                state_abbreviation = EXCLUDED.state_abbreviation,
+                                control_of_institution = EXCLUDED.control_of_institution,
+                                sector_of_institution = EXCLUDED.sector_of_institution,
+                                housing_capacity = EXCLUDED.housing_capacity,
+                                typical_housing_charge = EXCLUDED.typical_housing_charge,
+                                typical_food_charge = EXCLUDED.typical_food_charge,
+                                mission_statement = EXCLUDED.mission_statement,
+                                undergraduate_application_fee = EXCLUDED.undergraduate_application_fee,
+                                financial_aid_office_url = EXCLUDED.financial_aid_office_url,
+                                admissions_office_url = EXCLUDED.admissions_office_url,
+                                online_application_url = EXCLUDED.online_application_url,
+                                net_price_calculator_url = EXCLUDED.net_price_calculator_url
+                            """,
+                            batch
                         )
-                        ON CONFLICT (unitid) DO UPDATE SET
-                            institution_name = EXCLUDED.institution_name,
-                            street_address = EXCLUDED.street_address,
-                            city = EXCLUDED.city,
-                            zip_code = EXCLUDED.zip_code,
-                            state_abbreviation = EXCLUDED.state_abbreviation,
-                            control_of_institution = EXCLUDED.control_of_institution,
-                            sector_of_institution = EXCLUDED.sector_of_institution,
-                            housing_capacity = EXCLUDED.housing_capacity,
-                            typical_housing_charge = EXCLUDED.typical_housing_charge,
-                            typical_food_charge = EXCLUDED.typical_food_charge,
-                            mission_statement = EXCLUDED.mission_statement,
-                            undergraduate_application_fee = EXCLUDED.undergraduate_application_fee,
-                            financial_aid_office_url = EXCLUDED.financial_aid_office_url,
-                            admissions_office_url = EXCLUDED.admissions_office_url,
-                            online_application_url = EXCLUDED.online_application_url,
-                            net_price_calculator_url = EXCLUDED.net_price_calculator_url
-                    """, (
-                        record['unitid'],
-                        record['institution name'],
-                        record['HD2023.Street address or post office box'],
-                        record['HD2023.City location of institution'],
-                        record['HD2023.ZIP code'],
-                        record['HD2023.State abbreviation'],
-                        record['HD2023.Control of institution'],
-                        record['HD2023.Sector of institution'],
-                        record['IC2023.Housing capacity'],
-                        record['IC2023.Typical housing charges for an academic year'],
-                        record['IC2023.Typical food charge for academic year'],
-                        record['IC2023mission.Mission statement'],
-                        record['IC2023.Undergraduate application fee'],
-                        record['HD2023.Financial aid office web address'],
-                        record['HD2023.Admissions office web address'],
-                        record['HD2023.Online application web address'],
-                        record['HD2023.Net price calculator web address']
-                    ))
+                    self.db.conn.commit()
+                    successful_imports += len(batch)
+                    logger.info(f"Successfully imported batch of {len(batch)} records")
                 except Exception as e:
-                    logger.error(f"Error importing record for institution {record.get('unitid', 'unknown')}: {e}")
+                    self.db.conn.rollback()
+                    logger.error(f"Error importing batch: {str(e)}")
+                    failed_imports += len(batch)
                     continue
 
-            logger.info("Institutions data imported successfully")
+            logger.info(f"Import completed: {successful_imports} records imported successfully, "
+                       f"{failed_imports} records failed, "
+                       f"{len(self.skipped_records)} records skipped due to NA values")
         except Exception as e:
-            logger.error(f"Error importing institutions data: {e}")
-            raise
-
-    def import_admissions_data(self):
-        """Import data into the admissions_applications table"""
-        try:
-            logger.info("Importing admissions data...")
-            current_year = datetime.now().year
-
-            for _, record in self.data.iterrows():
-                try:
-                    self.db.execute("""
-                        INSERT INTO admissions_applications (
-                            unitid, year, secondary_school_GPA, recommendations,
-                            personal_statement_essay, admission_test_scores,
-                            applicants_total, applicants_men, applicants_women,
-                            admissions_total, admissions_men, admissions_women,
-                            sat_ebrw_75th_percentile, sat_math_75th_percentile
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (unitid, year) DO UPDATE SET
-                            secondary_school_GPA = EXCLUDED.secondary_school_GPA,
-                            recommendations = EXCLUDED.recommendations,
-                            personal_statement_essay = EXCLUDED.personal_statement_essay,
-                            admission_test_scores = EXCLUDED.admission_test_scores,
-                            applicants_total = EXCLUDED.applicants_total,
-                            applicants_men = EXCLUDED.applicants_men,
-                            applicants_women = EXCLUDED.applicants_women,
-                            admissions_total = EXCLUDED.admissions_total,
-                            admissions_men = EXCLUDED.admissions_men,
-                            admissions_women = EXCLUDED.admissions_women,
-                            sat_ebrw_75th_percentile = EXCLUDED.sat_ebrw_75th_percentile,
-                            sat_math_75th_percentile = EXCLUDED.sat_math_75th_percentile
-                    """, (
-                        record['unitid'], current_year,
-                        1 if record['ADM2023.Secondary school GPA'] == 'Required' else 5 if record['ADM2023.Secondary school GPA'] == 'Optional' else 3,
-                        1 if record['ADM2023.Recommendations'] == 'Required' else 5 if record['ADM2023.Recommendations'] == 'Optional' else 3,
-                        record['ADM2023.Personal statement or essay'] == 'Required',
-                        record['ADM2023.Admission test scores'] == 'Required',
-                        record['ADM2023.Applicants total'],
-                        record['ADM2023.Applicants men'],
-                        record['ADM2023.Applicants women'],
-                        record['ADM2023.Admissions total'],
-                        record['ADM2023.Admissions men'],
-                        record['ADM2023.Admissions women'],
-                        record['ADM2023.SAT Evidence-Based Reading and Writing 75th percentile score'],
-                        record['ADM2023.SAT Math 75th percentile score']
-                    ))
-                except Exception as e:
-                    logger.error(f"Error importing admissions data for institution {record.get('unitid', 'unknown')}: {e}")
-                    continue
-
-            logger.info("Admissions data imported successfully")
-        except Exception as e:
-            logger.error(f"Error importing admissions data: {e}")
-            raise
-
-    def import_financial_aid(self):
-        """Import data into the financial_aid table"""
-        try:
-            logger.info("Importing financial aid data...")
-            current_year = datetime.now().year
-
-            for _, record in self.data.iterrows():
-                try:
-                    self.db.execute("""
-                        INSERT INTO financial_aid (
-                            unitid, year, percent_aided_fed_state_local_institution,
-                            average_net_price
-                        ) VALUES (%s, %s, %s, %s)
-                        ON CONFLICT (unitid, year) DO UPDATE SET
-                            percent_aided_fed_state_local_institution = EXCLUDED.percent_aided_fed_state_local_institution,
-                            average_net_price = EXCLUDED.average_net_price
-                    """, (
-                        record['unitid'],
-                        current_year,
-                        record['SFA2223.Percent of full-time first-time undergraduates awarded federal, state, local or institutional grant aid'],
-                        record['SFA2223.Average net price-students awarded grant or scholarship aid, 2022-23']
-                    ))
-                except Exception as e:
-                    logger.error(f"Error importing financial aid data for institution {record.get('unitid', 'unknown')}: {e}")
-                    continue
-
-            logger.info("Financial aid data imported successfully")
-        except Exception as e:
-            logger.error(f"Error importing financial aid data: {e}")
+            logger.error(f"Error importing institutions data: {str(e)}")
             raise
 
     def import_all(self):
@@ -242,11 +205,9 @@ class CollegeDataImporter:
             self.read_csv()
             self.clean_data()
             self.import_institutions()
-            self.import_admissions_data()
-            self.import_financial_aid()
             logger.info("Full import process completed successfully")
         except Exception as e:
-            logger.error(f"Error during import process: {e}")
+            logger.error(f"Error during import process: {str(e)}")
             raise
 
 if __name__ == "__main__":
