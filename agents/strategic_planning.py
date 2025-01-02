@@ -7,29 +7,19 @@ from typing import Dict, Optional, List
 import logging
 from .base import BaseAgent, AgentError
 from models.database import Database
+from src.config.manager import ConfigManager
 import json
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
 class StrategicPlanningAgent(BaseAgent):
-    def __init__(self):
-        super().__init__(model="gpt-4-turbo", temperature=0.7)
-        self.system_prompt = """
-        You are a strategic planning expert specialized in college admissions. Your role is to:
+    """Handles long-term planning and strategy development for college applications"""
 
-        1. Create personalized college application strategies
-        2. Monitor and adjust plans based on progress
-        3. Identify gaps in student profiles
-        4. Recommend specific actions for profile improvement
-        5. Develop long-term academic and extracurricular plans
-        6. Set realistic goals and milestones
-        7. Provide strategic guidance for test preparation
-
-        Focus on creating actionable, timeline-based strategies that align with the student's 
-        goals and current profile.
-        """
+    def __init__(self, agent_type: str = "strategic_planning", config_manager: Optional[ConfigManager] = None):
+        super().__init__(agent_type=agent_type, config_manager=config_manager)
         self.db = Database()
+        logger.info(f"Initialized {self.__class__.__name__} with config: {self.config}")
 
     async def analyze_profile(self, user_id: int) -> Dict:
         """Analyze student profile and current progress"""
@@ -38,23 +28,23 @@ class StrategicPlanningAgent(BaseAgent):
                 "SELECT * FROM profiles WHERE user_id = %s",
                 (user_id,)
             )
-            
+
             deadlines = self.db.execute(
                 "SELECT * FROM application_deadlines WHERE user_id = %s",
                 (user_id,)
             )
-            
+
             milestones = self.db.execute(
                 "SELECT * FROM timeline_milestones WHERE user_id = %s",
                 (user_id,)
             )
-            
+
             return {
                 "profile": profile,
                 "deadlines": deadlines,
                 "milestones": milestones
             }
-            
+
         except Exception as e:
             logger.error(f"Error analyzing profile: {str(e)}")
             raise AgentError("Failed to analyze profile")
@@ -85,14 +75,14 @@ class StrategicPlanningAgent(BaseAgent):
                 }}
             }}
             """
-            
+
             response = self._make_api_call(
                 [{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
-            
+
             return response
-            
+
         except Exception as e:
             logger.error(f"Error generating strategy: {str(e)}")
             raise AgentError("Failed to generate application strategy")
@@ -118,15 +108,15 @@ class StrategicPlanningAgent(BaseAgent):
                 ]
             }}
             """
-            
+
             response = self._make_api_call(
                 [{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
-            
+
             gaps = json.loads(response)["gaps"]
             return gaps
-            
+
         except Exception as e:
             logger.error(f"Error identifying profile gaps: {str(e)}")
             return []
@@ -135,7 +125,7 @@ class StrategicPlanningAgent(BaseAgent):
         """Generate recommended milestones based on profile and goals"""
         try:
             current_date = datetime.now()
-            
+
             prompt = f"""
             Create a list of recommended milestones for this student:
             {json.dumps(profile_data, indent=2)}
@@ -155,15 +145,15 @@ class StrategicPlanningAgent(BaseAgent):
                 ]
             }}
             """
-            
+
             response = self._make_api_call(
                 [{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
-            
+
             milestones = json.loads(response)["milestones"]
             return milestones
-            
+
         except Exception as e:
             logger.error(f"Error generating milestone recommendations: {str(e)}")
             return []
@@ -173,24 +163,24 @@ class StrategicPlanningAgent(BaseAgent):
         try:
             prompt = f"""
             Adjust this strategy based on current progress:
-            
+
             Current Strategy:
             {json.dumps(current_strategy, indent=2)}
-            
+
             Progress Data:
             {json.dumps(progress_data, indent=2)}
-            
+
             Provide updated strategy in the same JSON format as the current strategy.
             """
-            
+
             response = self._make_api_call(
                 [{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
-            
+
             updated_strategy = json.loads(response)
             return updated_strategy
-            
+
         except Exception as e:
             logger.error(f"Error adjusting strategy: {str(e)}")
             raise AgentError("Failed to adjust strategy")
