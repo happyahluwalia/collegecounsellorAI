@@ -8,10 +8,18 @@ from typing import Dict, Any, Optional, List
 from openai import OpenAI
 from anthropic import Anthropic
 import json
+from datetime import datetime
 from utils.error_handling import AppError, log_error
 from src.config.manager import ConfigManager, ModelConfig
 
 logger = logging.getLogger(__name__)
+
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder for handling datetime objects"""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
 
 class AgentError(AppError):
     """Agent-specific errors"""
@@ -130,10 +138,17 @@ class BaseAgent:
             {"role": "system", "content": self.system_prompt},
         ]
         if context:
-            messages.append({
-                "role": "system", 
-                "content": f"Context: {json.dumps(context)}"
-            })
+            try:
+                context_str = json.dumps(context, cls=DateTimeEncoder)  # Use custom encoder
+                messages.append({
+                    "role": "system", 
+                    "content": f"Context: {context_str}"
+                })
+            except Exception as e:
+                logger.error(f"Error serializing context: {str(e)}")
+                # Continue without context rather than failing
+                logger.warning("Continuing without context due to serialization error")
+
         messages.append({"role": "user", "content": message})
         return messages
 
@@ -141,4 +156,8 @@ class BaseAgent:
         """Build context string from provided data"""
         if not context:
             return ""
-        return json.dumps(context, indent=2)
+        try:
+            return json.dumps(context, cls=DateTimeEncoder, indent=2)  # Use custom encoder
+        except Exception as e:
+            logger.error(f"Error serializing context: {str(e)}")
+            return ""  # Return empty string on serialization error
