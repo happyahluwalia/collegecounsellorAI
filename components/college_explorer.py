@@ -82,7 +82,7 @@ def search_institutions(search_term: str) -> List[Dict]:
     try:
         db = Database()
         results = db.execute("""
-            SELECT institution_name, unitid
+            SELECT DISTINCT institution_name, unitid
             FROM institutions
             WHERE LOWER(institution_name) LIKE LOWER(%s)
             ORDER BY institution_name
@@ -92,6 +92,90 @@ def search_institutions(search_term: str) -> List[Dict]:
     except Exception as e:
         logger.error(f"Error searching institutions: {str(e)}")
         return []
+
+def get_institution_details(institution_id: int) -> Optional[Dict]:
+    """Get detailed information about a specific institution."""
+    try:
+        db = Database()
+        details = db.execute_one("""
+            SELECT i.*,
+                CASE WHEN ufi.id IS NOT NULL THEN true ELSE false END as is_favorite
+            FROM institutions i
+            LEFT JOIN user_favorite_institutions ufi 
+                ON ufi.institution_id = i.unitid 
+                AND ufi.user_id = %s
+            WHERE i.unitid = %s
+        """, (st.session_state.user.id, institution_id))
+        return details
+    except Exception as e:
+        logger.error(f"Error fetching institution details: {str(e)}")
+        return None
+
+def render_institution_details(institution_id: int):
+    """Render detailed view of a specific institution."""
+    details = get_institution_details(institution_id)
+    if not details:
+        st.error("Failed to load institution details.")
+        return
+
+    # Back button
+    if st.button("← Back to List"):
+        st.session_state.selected_institution = None
+        st.rerun()
+
+    # Header with favorite button
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.title(details['institution_name'])
+    with col2:
+        if st.button("❤️" if details['is_favorite'] else "🤍", 
+                   key=f"fav_detail_{institution_id}"):
+            toggle_favorite(institution_id)
+
+    # Basic Information
+    st.subheader("📍 Location & Contact")
+    st.markdown(f"""
+        - **Address:** {details['city']}, {details['state_abbreviation']} {details['zip']}
+        - **Institution Type:** {details['control_of_institution']}
+        - **Region:** {details.get('geographic_region', 'Not specified')}
+    """)
+
+    # Academic Information
+    st.subheader("🎓 Academic Profile")
+    cols = st.columns(2)
+    with cols[0]:
+        st.markdown("**Degrees Offered:**")
+        if details.get('degree_levels'):
+            for degree in json.loads(details['degree_levels']):
+                st.markdown(f"- {degree}")
+        else:
+            st.markdown("- Information not available")
+
+    with cols[1]:
+        st.markdown("**Programs & Specializations:**")
+        if details.get('program_offerings'):
+            for program in json.loads(details['program_offerings']):
+                st.markdown(f"- {program}")
+        else:
+            st.markdown("- Information not available")
+
+    # Costs & Financial Information
+    st.subheader("💰 Costs & Financial Aid")
+    if details.get('tuition_and_fees') or details.get('typical_housing_charge'):
+        cols = st.columns(2)
+        with cols[0]:
+            if details.get('tuition_and_fees'):
+                st.metric("Annual Tuition & Fees", f"${details['tuition_and_fees']:,.2f}")
+        with cols[1]:
+            if details.get('typical_housing_charge'):
+                st.metric("Housing Cost", f"${details['typical_housing_charge']:,.2f}")
+    else:
+        st.info("Cost information not available")
+
+    # Additional Information
+    if details.get('additional_information'):
+        st.subheader("ℹ️ Additional Information")
+        st.markdown(details['additional_information'])
 
 def render_institutions_list(filters: Dict):
     """Render paginated list of institutions with filters."""
@@ -164,7 +248,10 @@ def render_institutions_list(filters: Dict):
                 col1, col2 = st.columns([3, 1])
 
                 with col1:
-                    st.markdown(f"### {inst['institution_name']}")
+                    if st.button(f"### {inst['institution_name']}", 
+                               key=f"select_{inst['unitid']}"):
+                        st.session_state.selected_institution = inst['unitid']
+                        st.rerun()
                     st.markdown(f"**Location:** {inst['city']}, {inst['state_abbreviation']}")
                     st.markdown(f"**Type:** {inst['control_of_institution']}")
 
@@ -183,7 +270,7 @@ def render_institutions_list(filters: Dict):
 
         with col1:
             if st.session_state.page_number > 0:
-                if st.button("← Previous"):
+                if st.button("← Previous", key="prev_page"):
                     st.session_state.page_number -= 1
                     st.rerun()
 
@@ -193,7 +280,7 @@ def render_institutions_list(filters: Dict):
 
         with col3:
             if (st.session_state.page_number + 1) * 10 < total_count:
-                if st.button("Next →"):
+                if st.button("Next →", key="next_page"):
                     st.session_state.page_number += 1
                     st.rerun()
 
@@ -209,6 +296,17 @@ def render_college_explorer():
         st.warning("Please log in to access all features of the College Explorer.")
         return
 
+    # Initialize session states
+    if 'search_term' not in st.session_state:
+        st.session_state.search_term = ""
+    if 'selected_institution' not in st.session_state:
+        st.session_state.selected_institution = None
+
+    # If an institution is selected, show its details
+    if st.session_state.selected_institution:
+        render_institution_details(st.session_state.selected_institution)
+        return
+
     # Initialize session state for filters if needed
     if 'all_states' not in st.session_state:
         try:
@@ -222,10 +320,6 @@ def render_college_explorer():
     # Filters section
     st.subheader("Filter Institutions")
 
-    # Initialize search state
-    if 'search_term' not in st.session_state:
-        st.session_state.search_term = ""
-
     # Search by name with dynamic suggestions
     name_filter = st.text_input(
         "Search by Institution Name",
@@ -233,6 +327,18 @@ def render_college_explorer():
         placeholder="Enter institution name...",
         key="institution_search"
     )
+
+    # Show suggestions if user is typing
+    if name_filter and name_filter != st.session_state.search_term:
+        suggestions = search_institutions(name_filter)
+        if suggestions:
+            st.markdown("### Suggestions:")
+            for suggestion in suggestions:
+                if st.button(suggestion['institution_name'], 
+                           key=f"suggest_{suggestion['unitid']}"):
+                    st.session_state.search_term = suggestion['institution_name']
+                    st.session_state.page_number = 0
+                    st.rerun()
 
     # Update search term in session state
     if name_filter != st.session_state.search_term:
@@ -287,7 +393,10 @@ def render_college_explorer():
                     col1, col2 = st.columns([3, 1])
 
                     with col1:
-                        st.markdown(f"### {inst['institution_name']}")
+                        if st.button(f"### {inst['institution_name']}", 
+                                   key=f"fav_select_{inst['unitid']}"):
+                            st.session_state.selected_institution = inst['unitid']
+                            st.rerun()
                         st.markdown(f"**Location:** {inst['city']}, {inst['state_abbreviation']}")
                         st.markdown(f"**Type:** {inst['control_of_institution']}")
 
