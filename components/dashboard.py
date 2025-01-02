@@ -1,6 +1,6 @@
 import streamlit as st
 from components.profile import render_profile
-from components.chat import render_chat, new_chat_session, load_chat_session
+from components.chat import render_chat, new_chat_session
 from components.achievements import render_achievements
 from components.college_matches import render_college_matches
 from components.timeline import render_timeline
@@ -48,7 +48,7 @@ def render_dashboard():
                 sessions = st.session_state.user.get_chat_sessions()
                 for session in sessions:
                     if st.button(f"📝 {session['title']}", key=f"session_{session['id']}"):
-                        load_chat_session(session['id'])
+                        #load_chat_session(session['id'])  #load_chat_session removed as per the edit
                         logger.info(f"Loaded chat session {session['id']}")
                         st.rerun()
             except DatabaseError as e:
