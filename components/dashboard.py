@@ -4,7 +4,8 @@ from components.chat import render_chat, new_chat_session, load_chat_session
 from components.achievements import render_achievements
 from components.college_matches import render_college_matches
 from components.timeline import render_timeline
-from components.internships import render_internships # New import
+from components.internships import render_internships
+from components.college_explorer import render_college_explorer  # New import
 from models.achievement import Achievement
 from utils.error_handling import handle_error, DatabaseError
 import logging
@@ -60,23 +61,26 @@ def render_dashboard():
         if 'active_tab' not in st.session_state:
             st.session_state.active_tab = "Chat"
 
-        # Create tabs
-        tabs = st.tabs(["Chat", "College Matches", "Timeline", "Internships", "Profile"])
+        # Create tabs with College Explorer added
+        tabs = st.tabs(["Chat", "College Explorer", "College Matches", "Timeline", "Internships", "Profile"])
 
         # Render content for each tab
         with tabs[0]:  # Chat tab
             render_chat()
 
-        with tabs[1]:  # College Matches tab
+        with tabs[1]:  # College Explorer tab
+            render_college_explorer()
+
+        with tabs[2]:  # College Matches tab
             render_college_matches()
 
-        with tabs[2]:  # Timeline tab
+        with tabs[3]:  # Timeline tab
             render_timeline()
 
-        with tabs[3]:  # Internships tab
+        with tabs[4]:  # Internships tab
             render_internships()
 
-        with tabs[4]:  # Profile tab
+        with tabs[5]:  # Profile tab
             render_profile()
 
     with col3:
