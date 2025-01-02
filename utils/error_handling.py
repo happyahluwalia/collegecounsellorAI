@@ -33,6 +33,11 @@ class APIError(AppError):
     def __init__(self, message: str):
         super().__init__(message, "API Error")
 
+class AgentError(AppError):
+    """Agent system related errors"""
+    def __init__(self, message: str):
+        super().__init__(message, "Agent Error")
+
 def handle_error(func: Callable) -> Callable:
     """Decorator for handling errors in Streamlit pages and components"""
     @wraps(func)
@@ -50,6 +55,10 @@ def handle_error(func: Callable) -> Callable:
             logger.error(f"API error in {func.__name__}: {str(e)}")
             logger.debug(traceback.format_exc())
             st.error(f"🔌 {e.message}")
+        except AgentError as e:
+            logger.error(f"Agent error in {func.__name__}: {str(e)}")
+            logger.debug(traceback.format_exc())
+            st.error(f"🤖 {e.message}")
         except Exception as e:
             logger.critical(f"Unexpected error in {func.__name__}: {str(e)}")
             logger.debug(traceback.format_exc())
