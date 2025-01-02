@@ -44,7 +44,11 @@ class PrimaryCounselorAgent(BaseAgent):
         """Load configuration from YAML template"""
         try:
             if hasattr(self, 'config_manager') and self.config_manager:
-                template = self.config_manager.get_template(self.agent_type)
+                logger.info(f"Loading template for agent type: {self.agent_type}")
+                templates = self.config_manager.templates.get('templates', {})
+                template = templates.get(self.agent_type, {})
+                logger.info(f"Found template: {template}")
+
                 return {
                     'provider': 'openai',
                     'model_name': 'gpt-4-turbo-preview',
@@ -143,9 +147,25 @@ class PrimaryCounselorAgent(BaseAgent):
             # Get template from config
             template = self.config.get('system_prompt_template', '')
             if not template:
-                logger.warning("No system prompt template found in config")
-                template = "You are a college admissions counselor. Provide guidance and advice to students."
+                logger.warning("No system prompt template found in config, using default")
+                template = """You are a college admissions counselor. Provide guidance and advice to students.
 
+                When providing recommendations, use the following format for actionable items:
+
+                <actionable id="1">Specific action or recommendation here</actionable>
+
+                At the end of your response, include:
+
+                [system]
+                actionable:
+                [1]
+                category: [Category]
+                year: [Grade Level]
+                url: [Optional URL]
+                [/system]
+                """
+
+            logger.info(f"Using system prompt template: {template[:100]}...")
             messages = [
                 {
                     "role": "system",
