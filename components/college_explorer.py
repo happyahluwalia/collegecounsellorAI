@@ -77,6 +77,22 @@ def calculate_admission_chance(student_profile: Dict, institution_stats: Dict) -
     # Cap the chance at 95%
     return min(0.95, base_chance)
 
+def search_institutions(search_term: str) -> List[Dict]:
+    """Search institutions by name with autocomplete."""
+    try:
+        db = Database()
+        results = db.execute("""
+            SELECT institution_name, unitid
+            FROM institutions
+            WHERE LOWER(institution_name) LIKE LOWER(%s)
+            ORDER BY institution_name
+            LIMIT 10
+        """, (f"%{search_term}%",))
+        return results
+    except Exception as e:
+        logger.error(f"Error searching institutions: {str(e)}")
+        return []
+
 def render_institutions_list(filters: Dict):
     """Render paginated list of institutions with filters."""
     try:
@@ -116,16 +132,31 @@ def render_institutions_list(filters: Dict):
             query += " AND control_of_institution = ANY(%s)"
             params.append(filters['types'])
 
-        # Add pagination
+        # Get total count first
+        count_query = f"""
+            SELECT COUNT(*) as count
+            FROM institutions i
+            LEFT JOIN user_favorite_institutions ufi 
+                ON ufi.institution_id = i.unitid 
+                AND ufi.user_id = %s
+            WHERE 1=1
+            {' AND LOWER(institution_name) LIKE LOWER(%s)' if filters.get('name') else ''}
+            {' AND state_abbreviation = ANY(%s)' if filters.get('states') else ''}
+            {' AND control_of_institution = ANY(%s)' if filters.get('types') else ''}
+        """
+        count_result = db.execute_one(count_query, tuple(params))
+        total_count = count_result['count'] if count_result else 0
+
+        # Add pagination to main query
         query += " ORDER BY institution_name LIMIT 10 OFFSET %s"
         params.append(st.session_state.page_number * 10)
 
-        # Execute query
+        # Execute main query
         institutions = db.execute(query, tuple(params))
 
-        # Get total count for pagination
-        count_query = query.split('ORDER BY')[0].replace('SELECT i.*,', 'SELECT COUNT(*)')
-        total_count = db.execute_one(count_query, tuple(params[:-1]))['count']
+        if not institutions:
+            st.info("No institutions found matching your criteria.")
+            return
 
         # Display institutions
         for inst in institutions:
@@ -191,8 +222,22 @@ def render_college_explorer():
     # Filters section
     st.subheader("Filter Institutions")
 
-    # Search by name
-    name_filter = st.text_input("Search by Institution Name", placeholder="Enter institution name...")
+    # Initialize search state
+    if 'search_term' not in st.session_state:
+        st.session_state.search_term = ""
+
+    # Search by name with dynamic suggestions
+    name_filter = st.text_input(
+        "Search by Institution Name",
+        value=st.session_state.search_term,
+        placeholder="Enter institution name...",
+        key="institution_search"
+    )
+
+    # Update search term in session state
+    if name_filter != st.session_state.search_term:
+        st.session_state.search_term = name_filter
+        st.session_state.page_number = 0  # Reset pagination when search changes
 
     # State and type filters
     col1, col2 = st.columns(2)
@@ -231,16 +276,11 @@ def render_college_explorer():
             fav_institutions = db.execute("""
                 SELECT 
                     i.*,
-                    CASE 
-                        WHEN ufi.id IS NOT NULL THEN true 
-                        ELSE false 
-                    END as is_favorite
+                    true as is_favorite
                 FROM institutions i
-                LEFT JOIN user_favorite_institutions ufi 
-                    ON ufi.institution_id = i.unitid 
-                    AND ufi.user_id = %s
                 WHERE i.unitid = ANY(%s)
-            """, (st.session_state.user.id, favorites))
+                ORDER BY institution_name
+            """, (favorites,))
 
             for inst in fav_institutions:
                 with st.container():
