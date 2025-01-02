@@ -1,0 +1,207 @@
+## System Overview
+
+The system will use a multi-agent architecture where each agent specializes in specific aspects of college counseling. The system must be LLM-agnostic, allowing us to leverage different models' strengths.
+
+## Core Agent Requirements
+
+### 1. Primary Counselor Agent (PCA)
+**Purpose:** Main interface for student interaction and conversation management
+**Recommended LLM:** GPT-4 (best for general conversation and understanding context)
+
+**Key Capabilities:**
+- Maintain engaging, personalized conversations
+- Route complex queries to specialized agents
+- Maintain conversation context and student profile awareness
+- Generate natural, empathetic responses
+
+**Database Integration:**
+```python
+class PrimaryCounselorAgent:
+    async def get_context(self, user_id):
+        # Fetch relevant user context
+        return {
+            "profile": await db.fetch_one("SELECT * FROM profiles WHERE user_id = $1", user_id),
+            "recent_messages": await db.fetch_all(
+                """SELECT content, role 
+                   FROM messages m 
+                   JOIN chat_sessions cs ON m.session_id = cs.id 
+                   WHERE cs.user_id = $1 
+                   ORDER BY m.created_at DESC LIMIT 10""", 
+                user_id
+            ),
+            "achievements": await db.fetch_all(
+                "SELECT * FROM user_achievements WHERE user_id = $1", 
+                user_id
+            )
+        }
+```
+
+### 2. Strategic Planning Agent (SPA)
+**Purpose:** Long-term planning and strategy development
+**Recommended LLM:** Claude (excels at complex analysis and planning)
+
+**Key Capabilities:**
+- Create personalized college application strategies
+- Monitor and adjust plans based on progress
+- Identify gaps in student profiles
+- Recommend specific actions for profile improvement
+
+**Database Integration:**
+```python
+class StrategicPlanningAgent:
+    async def analyze_profile(self, user_id):
+        return {
+            "profile": await db.fetch_one("SELECT * FROM profiles WHERE user_id = $1", user_id),
+            "deadlines": await db.fetch_all(
+                "SELECT * FROM application_deadlines WHERE user_id = $1", 
+                user_id
+            ),
+            "milestones": await db.fetch_all(
+                "SELECT * FROM timeline_milestones WHERE user_id = $1", 
+                user_id
+            )
+        }
+```
+
+### 3. Timeline Management Agent (TMA)
+**Purpose:** Manage deadlines and create optimal schedules
+**Recommended LLM:** GPT-4 (good at temporal reasoning)
+
+**Key Capabilities:**
+- Create and manage application timelines
+- Set realistic milestones
+- Generate reminders
+- Adjust schedules based on progress
+
+**Database Integration:**
+```python
+class TimelineAgent:
+    async def manage_deadlines(self, user_id):
+        return {
+            "deadlines": await db.fetch_all(
+                """SELECT * FROM application_deadlines 
+                   WHERE user_id = $1 AND deadline_date > CURRENT_DATE
+                   ORDER BY deadline_date""", 
+                user_id
+            ),
+            "reminders": await db.fetch_all(
+                "SELECT * FROM deadline_reminders WHERE user_id = $1", 
+                user_id
+            )
+        }
+```
+
+### 4. College Research Agent (CRA)
+**Purpose:** College research and matching
+**Recommended LLM:** Claude (good at research and analysis)
+
+**Key Capabilities:**
+- Match students with suitable colleges
+- Analyze admission chances
+- Provide detailed college insights
+- Track application requirements
+
+**Database Integration:**
+```python
+class CollegeResearchAgent:
+    async def analyze_matches(self, user_id):
+        return {
+            "profile": await db.fetch_one("SELECT * FROM profiles WHERE user_id = $1", user_id),
+            "institutions": await db.fetch_all(
+                """SELECT i.* 
+                   FROM institutions i
+                   JOIN user_favorite_institutions ufi ON i.unitid = ufi.institution_id
+                   WHERE ufi.user_id = $1""", 
+                user_id
+            )
+        }
+```
+
+### 5. Activity Planning Agent (APA)
+**Purpose:** Extracurricular and summer planning
+**Recommended LLM:** GPT-4 (creative in activity suggestions)
+
+**Key Capabilities:**
+- Suggest relevant activities
+- Match internship opportunities
+- Track activity progress
+- Evaluate activity impact
+
+**Database Integration:**
+```python
+class ActivityPlanningAgent:
+    async def suggest_activities(self, user_id):
+        return {
+            "current_activities": await db.fetch_all(
+                "SELECT activities FROM profiles WHERE user_id = $1", 
+                user_id
+            ),
+            "internships": await db.fetch_all(
+                """SELECT ip.* 
+                   FROM internship_programs ip
+                   JOIN internship_applications ia ON ip.id = ia.program_id
+                   WHERE ia.user_id = $1""", 
+                user_id
+            )
+        }
+```
+
+### 6. Essay Development Agent (EDA)
+**Purpose:** Guide essay writing process
+**Recommended LLM:** Claude (excellent at writing and analysis)
+
+**Key Capabilities:**
+- Brainstorm essay topics
+- Provide structural guidance
+- Offer revision suggestions
+- Ensure authenticity
+
+## Agent Orchestration
+
+```python
+from langgraph.graph import Graph, MessageState
+from langchain.agents import AgentExecutor
+
+class AgentOrchestrator:
+    def __init__(self):
+        self.agents = {
+            "counselor": PrimaryCounselorAgent(),
+            "strategic": StrategicPlanningAgent(),
+            "timeline": TimelineManagementAgent(),
+            "college": CollegeResearchAgent(),
+            "activity": ActivityPlanningAgent(),
+            "essay": EssayDevelopmentAgent()
+        }
+        
+        # Define the graph
+        self.graph = Graph()
+        
+        # Add nodes for each agent
+        for agent_name, agent in self.agents.items():
+            self.graph.add_node(agent_name, agent.process)
+            
+        # Define edges (agent communication paths)
+        self.graph.add_edge("counselor", "strategic")
+        self.graph.add_edge("strategic", "timeline")
+        self.graph.add_edge("timeline", "activity")
+        # Add more edges as needed
+```
+
+## Agent Communication Protocol
+
+```python
+class AgentMessage:
+    def __init__(self, sender: str, content: dict, metadata: dict = None):
+        self.sender = sender
+        self.content = content
+        self.metadata = metadata or {}
+        self.timestamp = datetime.now()
+        
+    def to_dict(self):
+        return {
+            "sender": self.sender,
+            "content": self.content,
+            "metadata": self.metadata,
+            "timestamp": self.timestamp.isoformat()
+        }
+```
