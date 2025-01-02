@@ -165,7 +165,7 @@ class PrimaryCounselorAgent(BaseAgent):
                 [/system]
                 """
 
-            logger.info(f"Using system prompt template: {template[:100]}...")
+            logger.info(f"Using system prompt template (full): {template}")
             messages = [
                 {
                     "role": "system",
@@ -187,7 +187,7 @@ class PrimaryCounselorAgent(BaseAgent):
                 "content": message
             })
 
-            logger.info(f"Built messages with system prompt and context. Message count: {len(messages)}")
+            logger.info(f"Built messages with system prompt and context. Complete messages: {messages}")
             return messages
 
         except Exception as e:
@@ -197,7 +197,7 @@ class PrimaryCounselorAgent(BaseAgent):
     def _make_api_call(self, messages: List[Dict[str, str]]) -> str:
         """Make API call to LLM provider"""
         try:
-            logger.info("Making API call with constructed messages")
+            logger.info("Making API call with messages: %s", json.dumps(messages, indent=2))
             # Use the configured provider (OpenAI or Anthropic)
             provider = self.config.get('provider', 'openai')
 
@@ -213,6 +213,7 @@ class PrimaryCounselorAgent(BaseAgent):
                     max_tokens=self.config.get('max_tokens', 2000)
                 )
                 result = response.choices[0].message.content
+                logger.info(f"Raw OpenAI response: {result}")
             else:
                 if not hasattr(self, 'anthropic_client'):
                     from anthropic import Anthropic
@@ -228,14 +229,33 @@ class PrimaryCounselorAgent(BaseAgent):
                     ]
                 )
                 result = response.content[0].text
+                logger.info(f"Raw Anthropic response: {result}")
 
-            logger.info("Successfully received API response")
-            logger.debug(f"Raw response: {result}")
+            # For debugging, save the system prompt and response in messages table
+            if hasattr(self, 'db'):
+                try:
+                    self.db.execute(
+                        """
+                        INSERT INTO messages (session_id, content, role, metadata)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (
+                            -1,  # Use -1 as special session_id for debug messages
+                            json.dumps({
+                                'system_prompt': messages[0]['content'],
+                                'raw_response': result
+                            }),
+                            'debug',
+                            {'debug': True}
+                        )
+                    )
+                except Exception as db_error:
+                    logger.error(f"Failed to save debug message: {str(db_error)}")
+
             return result
 
         except Exception as e:
             logger.error(f"API call failed: {str(e)}")
-            # Try fallback provider if configured
             if self.config.get('fallback'):
                 logger.info("Attempting fallback provider")
                 old_config = self.config.copy()
