@@ -37,7 +37,29 @@ class PrimaryCounselorAgent(BaseAgent):
     def __init__(self, agent_type: str = "primary_counselor", config_manager: Optional[ConfigManager] = None):
         super().__init__(agent_type=agent_type, config_manager=config_manager)
         self.db = Database()
+        self.config = self._load_config()
         logger.info(f"Initialized {self.__class__.__name__} with config: {self.config}")
+
+    def _load_config(self) -> Dict:
+        """Load configuration from YAML template"""
+        try:
+            if hasattr(self, 'config_manager') and self.config_manager:
+                template = self.config_manager.get_template(self.agent_type)
+                return {
+                    'provider': 'openai',
+                    'model_name': 'gpt-4-turbo-preview',
+                    'temperature': 0.7,
+                    'max_tokens': 2000,
+                    'system_prompt_template': template.get('base_prompt', ''),
+                    'fallback': {
+                        'provider': 'anthropic',
+                        'model_name': 'claude-3-sonnet'
+                    }
+                }
+            return {}
+        except Exception as e:
+            logger.error(f"Error loading config: {str(e)}")
+            return {}
 
     def _parse_actionable_items(self, response: str) -> List[ActionableItem]:
         """Parse response to find actionable items and their details"""
@@ -63,10 +85,8 @@ class PrimaryCounselorAgent(BaseAgent):
                 line = line.strip()
                 if line:
                     if line.startswith('[') and line.endswith(']'):
-                        # If we have a previous item, save it
                         if current_id is not None and current_metadata:
                             metadata[current_id] = current_metadata
-                        # Start new item
                         current_id = line[1:-1]
                         current_metadata = {}
                     elif ':' in line and current_id is not None:
@@ -120,11 +140,16 @@ class PrimaryCounselorAgent(BaseAgent):
     def _build_messages(self, message: str, context: Optional[Dict[str, Any]] = None) -> List[Dict]:
         """Build messages list for the API call including system prompt and context"""
         try:
-            # Start with system message containing our actionable items instructions
+            # Get template from config
+            template = self.config.get('system_prompt_template', '')
+            if not template:
+                logger.warning("No system prompt template found in config")
+                template = "You are a college admissions counselor. Provide guidance and advice to students."
+
             messages = [
                 {
                     "role": "system",
-                    "content": self.config.get('system_prompt_template', '')
+                    "content": template
                 }
             ]
 
@@ -157,6 +182,10 @@ class PrimaryCounselorAgent(BaseAgent):
             provider = self.config.get('provider', 'openai')
 
             if provider == 'openai':
+                if not hasattr(self, 'openai_client'):
+                    from openai import OpenAI
+                    self.openai_client = OpenAI()
+
                 response = self.openai_client.chat.completions.create(
                     model=self.config.get('model_name', 'gpt-4-turbo-preview'),
                     messages=messages,
@@ -165,7 +194,10 @@ class PrimaryCounselorAgent(BaseAgent):
                 )
                 result = response.choices[0].message.content
             else:
-                # Anthropic fallback if configured
+                if not hasattr(self, 'anthropic_client'):
+                    from anthropic import Anthropic
+                    self.anthropic_client = Anthropic()
+
                 response = self.anthropic_client.messages.create(
                     model=self.config.get('model_name', 'claude-3-opus'),
                     max_tokens=self.config.get('max_tokens', 4000),
@@ -195,7 +227,6 @@ class PrimaryCounselorAgent(BaseAgent):
                 finally:
                     self.config = old_config
             raise AgentError(f"Failed to get response from LLM: {str(e)}")
-
 
     def get_response(self, message: str, context: Optional[Dict[str, Any]] = None) -> Dict:
         """Generate a response to the user's message with context and actionable items"""
