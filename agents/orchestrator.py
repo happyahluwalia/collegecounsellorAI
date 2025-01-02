@@ -4,7 +4,7 @@ Manages communication and coordination between specialized agents.
 """
 
 import logging
-from typing import Dict, Any, List, TypeVar, Annotated
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 from langgraph.graph import Graph
 from langgraph.prebuilt import create_react_agent
@@ -12,12 +12,10 @@ from langchain_openai import ChatOpenAI
 from .primary_counselor import PrimaryCounselorAgent
 from .strategic_planning import StrategicPlanningAgent
 from .base import AgentError
+from src.config.manager import ConfigManager
 import json
 
 logger = logging.getLogger(__name__)
-
-# Define state type for graph
-StateType = Dict[str, Any]
 
 class AgentMessage:
     """Message format for inter-agent communication"""
@@ -39,13 +37,26 @@ class AgentOrchestrator:
     """Manages the multi-agent system using LangGraph"""
 
     def __init__(self):
-        # Initialize OpenAI model
-        self.model = ChatOpenAI(model="gpt-4")
+        # Initialize configuration manager
+        self.config_manager = ConfigManager()
 
-        # Initialize agents
+        # Initialize primary OpenAI model for LangGraph
+        primary_config = self.config_manager.get_agent_config("primary_counselor")
+        self.model = ChatOpenAI(
+            model=primary_config.model_name,
+            temperature=primary_config.temperature
+        )
+
+        # Initialize agents with configuration
         self.agents = {
-            "counselor": PrimaryCounselorAgent(),
-            "strategic": StrategicPlanningAgent(),
+            "counselor": PrimaryCounselorAgent(
+                agent_type="primary_counselor",
+                config_manager=self.config_manager
+            ),
+            "strategic": StrategicPlanningAgent(
+                agent_type="strategic_planning",
+                config_manager=self.config_manager
+            ),
         }
 
         # Create agent tools
@@ -92,4 +103,11 @@ class AgentOrchestrator:
         """Get status of all agents in the system"""
         return {
             name: "active" for name in self.agents.keys()
+        }
+
+    def get_agent_configs(self) -> Dict[str, Dict[str, Any]]:
+        """Get current configuration of all agents"""
+        return {
+            name: agent.config.dict() 
+            for name, agent in self.agents.items()
         }
