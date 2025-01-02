@@ -151,7 +151,11 @@ def render_program_browser(interests: List[str]):
         query = """
             SELECT * FROM internship_programs
             WHERE (CARDINALITY(%s::text[]) = 0 OR program_type = ANY(%s))
-            AND (CARDINALITY(%s::text[]) = 0 OR subject_areas::jsonb ?| %s)
+            AND (CARDINALITY(%s::text[]) = 0 OR EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(subject_areas::jsonb) subject
+                WHERE subject = ANY(%s)
+            ))
             AND (CARDINALITY(%s::text[]) = 0 OR location_type = ANY(%s))
             ORDER BY application_deadline
         """
