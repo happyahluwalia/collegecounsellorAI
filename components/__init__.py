@@ -3,7 +3,7 @@ College Compass Components Package
 """
 from .dashboard import render_dashboard
 from .auth import init_auth, login_page, handle_oauth_callback
-from .chat import render_chat, new_chat_session, load_chat_session
+from .chat import render_chat, new_chat_session
 from .achievements import render_achievements
 from .college_matches import render_college_matches
 from .timeline import render_timeline
@@ -18,7 +18,6 @@ __all__ = [
     'handle_oauth_callback',
     'render_chat',
     'new_chat_session',
-    'load_chat_session',
     'render_achievements',
     'render_college_matches',
     'render_timeline',

@@ -226,4 +226,4 @@ def save_chat_session(prompt, response):
         raise DatabaseError("Failed to save chat messages")
 
 # Make sure the functions are properly exported
-__all__ = ['render_chat', 'new_chat_session', 'load_chat_session']
+__all__ = ['render_chat', 'new_chat_session']
