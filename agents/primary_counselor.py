@@ -117,6 +117,86 @@ class PrimaryCounselorAgent(BaseAgent):
             "actionable_items": [item.to_dict() for item in actionable_items]
         }
 
+    def _build_messages(self, message: str, context: Optional[Dict[str, Any]] = None) -> List[Dict]:
+        """Build messages list for the API call including system prompt and context"""
+        try:
+            # Start with system message containing our actionable items instructions
+            messages = [
+                {
+                    "role": "system",
+                    "content": self.config.get('system_prompt_template', '')
+                }
+            ]
+
+            # Add context if available
+            if context:
+                context_str = self._build_context_string(context)
+                messages.append({
+                    "role": "system",
+                    "content": f"Additional context about the student:\n{context_str}"
+                })
+
+            # Add user message
+            messages.append({
+                "role": "user",
+                "content": message
+            })
+
+            logger.info(f"Built messages with system prompt and context. Message count: {len(messages)}")
+            return messages
+
+        except Exception as e:
+            logger.error(f"Error building messages: {str(e)}")
+            raise AgentError("Failed to build messages")
+
+    def _make_api_call(self, messages: List[Dict[str, str]]) -> str:
+        """Make API call to LLM provider"""
+        try:
+            logger.info("Making API call with constructed messages")
+            # Use the configured provider (OpenAI or Anthropic)
+            provider = self.config.get('provider', 'openai')
+
+            if provider == 'openai':
+                response = self.openai_client.chat.completions.create(
+                    model=self.config.get('model_name', 'gpt-4-turbo-preview'),
+                    messages=messages,
+                    temperature=self.config.get('temperature', 0.7),
+                    max_tokens=self.config.get('max_tokens', 2000)
+                )
+                result = response.choices[0].message.content
+            else:
+                # Anthropic fallback if configured
+                response = self.anthropic_client.messages.create(
+                    model=self.config.get('model_name', 'claude-3-opus'),
+                    max_tokens=self.config.get('max_tokens', 4000),
+                    temperature=self.config.get('temperature', 0.5),
+                    messages=[
+                        {"role": m["role"], "content": m["content"]} 
+                        for m in messages
+                    ]
+                )
+                result = response.content[0].text
+
+            logger.info("Successfully received API response")
+            logger.debug(f"Raw response: {result}")
+            return result
+
+        except Exception as e:
+            logger.error(f"API call failed: {str(e)}")
+            # Try fallback provider if configured
+            if self.config.get('fallback'):
+                logger.info("Attempting fallback provider")
+                old_config = self.config.copy()
+                self.config = self.config['fallback']
+                try:
+                    result = self._make_api_call(messages)
+                    logger.info("Fallback API call succeeded")
+                    return result
+                finally:
+                    self.config = old_config
+            raise AgentError(f"Failed to get response from LLM: {str(e)}")
+
+
     def get_response(self, message: str, context: Optional[Dict[str, Any]] = None) -> Dict:
         """Generate a response to the user's message with context and actionable items"""
         try:
