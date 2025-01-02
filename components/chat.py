@@ -1,6 +1,5 @@
 import streamlit as st
-from agents.counselor import CounselorAgent
-from agents.validator import ValidatorAgent
+from agents.orchestrator import AgentOrchestrator
 from utils.error_handling import handle_error, DatabaseError, ValidationError
 import logging
 
@@ -10,10 +9,8 @@ def init_chat():
     """Initialize chat session state variables."""
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    if 'counselor' not in st.session_state:
-        st.session_state.counselor = CounselorAgent()
-    if 'validator' not in st.session_state:
-        st.session_state.validator = ValidatorAgent()
+    if 'agent_orchestrator' not in st.session_state:
+        st.session_state.agent_orchestrator = AgentOrchestrator()
     if 'current_session_id' not in st.session_state:
         st.session_state.current_session_id = None
 
@@ -46,9 +43,9 @@ def load_chat_session(session_id):
 
 @handle_error
 def render_chat():
-    """Render the chat interface with enhanced counseling features."""
+    """Render the chat interface with multi-agent counseling system."""
     init_chat()
-    st.subheader("Chat with your AI College Counselor")
+    st.subheader("Chat with your AI College Counseling Team")
 
     # Add quick action buttons
     col1, col2, col3 = st.columns(3)
@@ -88,11 +85,12 @@ def render_chat():
             # Show typing indicator
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
-                    # Get AI response with context
-                    response = st.session_state.counselor.get_response(prompt, context)
-
-                    # Validate response
-                    validated_response = st.session_state.validator.validate_response(response)
+                    # Process message through agent orchestrator
+                    logger.info("Processing message through agent orchestrator")
+                    response = st.session_state.agent_orchestrator.process_message(
+                        prompt,
+                        st.session_state.user.id if hasattr(st.session_state, 'user') else None
+                    )
 
                     st.markdown(response)
                     st.session_state.messages.append({"role": "assistant", "content": response})
