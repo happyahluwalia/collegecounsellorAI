@@ -1,5 +1,4 @@
 import streamlit as st
-import plotly.express as px
 import pandas as pd
 from models.database import Database
 from typing import Dict, List, Optional
@@ -78,86 +77,98 @@ def calculate_admission_chance(student_profile: Dict, institution_stats: Dict) -
     # Cap the chance at 95%
     return min(0.95, base_chance)
 
-def render_geographic_view():
-    """Render the geographic distribution view with filters."""
-    st.subheader("Geographic Distribution")
-
-    # Filters
-    col1, col2 = st.columns(2)
-    with col1:
-        selected_states = st.multiselect(
-            "Select States",
-            options=sorted(list(set(st.session_state.get('all_states', [])))),
-            placeholder="All States"
-        )
-
-    with col2:
-        institution_types = st.multiselect(
-            "Institution Type",
-            options=["Public", "Private Not-for-Profit", "Private For-Profit"],
-            placeholder="All Types"
-        )
-
-    # Fetch filtered data
+def render_institutions_list(filters: Dict):
+    """Render paginated list of institutions with filters."""
     try:
+        # Get page number from session state
+        if 'page_number' not in st.session_state:
+            st.session_state.page_number = 0
+
+        # Initialize database connection
         db = Database()
+
+        # Build query with filters
         query = """
             SELECT 
-                state_abbreviation,
-                COUNT(*) as count,
-                control_of_institution
-            FROM institutions
+                i.*,
+                CASE 
+                    WHEN ufi.id IS NOT NULL THEN true 
+                    ELSE false 
+                END as is_favorite
+            FROM institutions i
+            LEFT JOIN user_favorite_institutions ufi 
+                ON ufi.institution_id = i.unitid 
+                AND ufi.user_id = %s
             WHERE 1=1
         """
-        params = []
+        params = [st.session_state.user.id]
 
-        if selected_states:
+        # Apply filters
+        if filters.get('name'):
+            query += " AND LOWER(institution_name) LIKE LOWER(%s)"
+            params.append(f"%{filters['name']}%")
+
+        if filters.get('states'):
             query += " AND state_abbreviation = ANY(%s)"
-            params.append(selected_states)
+            params.append(filters['states'])
 
-        if institution_types:
+        if filters.get('types'):
             query += " AND control_of_institution = ANY(%s)"
-            params.append(institution_types)
+            params.append(filters['types'])
 
-        query += " GROUP BY state_abbreviation, control_of_institution"
+        # Add pagination
+        query += " ORDER BY institution_name LIMIT 10 OFFSET %s"
+        params.append(st.session_state.page_number * 10)
 
-        results = db.execute(query, tuple(params))
+        # Execute query
+        institutions = db.execute(query, tuple(params))
 
-        if results:
-            # Convert to DataFrame for plotting
-            df = pd.DataFrame(results)
+        # Get total count for pagination
+        count_query = query.split('ORDER BY')[0].replace('SELECT i.*,', 'SELECT COUNT(*)')
+        total_count = db.execute_one(count_query, tuple(params[:-1]))['count']
 
-            # Create choropleth map
-            fig = px.choropleth(
-                df,
-                locations='state_abbreviation',
-                locationmode="USA-states",
-                color='count',
-                scope="usa",
-                color_continuous_scale="Viridis",
-                title="Institution Distribution by State"
-            )
+        # Display institutions
+        for inst in institutions:
+            with st.container():
+                col1, col2 = st.columns([3, 1])
 
-            st.plotly_chart(fig, use_container_width=True)
+                with col1:
+                    st.markdown(f"### {inst['institution_name']}")
+                    st.markdown(f"**Location:** {inst['city']}, {inst['state_abbreviation']}")
+                    st.markdown(f"**Type:** {inst['control_of_institution']}")
 
-            # Show statistics
-            st.markdown("### Quick Statistics")
-            total_institutions = sum(r['count'] for r in results)
-            st.write(f"Total Institutions: {total_institutions}")
+                    if inst['typical_housing_charge']:
+                        st.markdown(f"**Housing Cost:** ${inst['typical_housing_charge']:,.2f}/year")
 
-            # Show distribution by type
-            if institution_types:
-                st.write("Distribution by Type:")
-                for type_name in institution_types:
-                    type_count = sum(r['count'] for r in results if r['control_of_institution'] == type_name)
-                    st.write(f"- {type_name}: {type_count} ({(type_count/total_institutions*100):.1f}%)")
+                with col2:
+                    if st.button("❤️" if inst['is_favorite'] else "🤍", 
+                               key=f"fav_{inst['unitid']}"):
+                        toggle_favorite(inst['unitid'])
 
-        else:
-            st.info("No institutions found matching the selected criteria.")
+                st.markdown("---")
+
+        # Pagination controls
+        col1, col2, col3 = st.columns([1, 2, 1])
+
+        with col1:
+            if st.session_state.page_number > 0:
+                if st.button("← Previous"):
+                    st.session_state.page_number -= 1
+                    st.rerun()
+
+        with col2:
+            total_pages = (total_count - 1) // 10 + 1
+            st.markdown(f"Page {st.session_state.page_number + 1} of {total_pages}")
+
+        with col3:
+            if (st.session_state.page_number + 1) * 10 < total_count:
+                if st.button("Next →"):
+                    st.session_state.page_number += 1
+                    st.rerun()
 
     except Exception as e:
-        logger.error(f"Error rendering geographic view: {str(e)}")
-        st.error("Failed to load geographic distribution data.")
+        logger.error(f"Error rendering institutions list: {str(e)}")
+        st.error("Failed to load institutions. Please try again.")
 
 def render_college_explorer():
     """Main function to render the college explorer dashboard."""
@@ -177,21 +188,38 @@ def render_college_explorer():
             logger.error(f"Error fetching states: {str(e)}")
             st.session_state.all_states = []
 
-    # Create tabs for different views
-    tab1, tab2, tab3 = st.tabs([
-        "Geographic View",
-        "Cost Analysis",
-        "Housing & Facilities"
-    ])
+    # Filters section
+    st.subheader("Filter Institutions")
 
-    with tab1:
-        render_geographic_view()
+    # Search by name
+    name_filter = st.text_input("Search by Institution Name", placeholder="Enter institution name...")
 
-    with tab2:
-        st.info("Cost Analysis features coming soon!")
+    # State and type filters
+    col1, col2 = st.columns(2)
+    with col1:
+        selected_states = st.multiselect(
+            "Select States",
+            options=sorted(list(set(st.session_state.get('all_states', [])))),
+            placeholder="All States"
+        )
 
-    with tab3:
-        st.info("Housing & Facilities features coming soon!")
+    with col2:
+        institution_types = st.multiselect(
+            "Institution Type",
+            options=["Public", "Private Not-for-Profit", "Private For-Profit"],
+            placeholder="All Types"
+        )
+
+    # Combine all filters
+    filters = {
+        'name': name_filter,
+        'states': selected_states if selected_states else None,
+        'types': institution_types if institution_types else None
+    }
+
+    # Display filtered institutions
+    st.subheader("Institutions")
+    render_institutions_list(filters)
 
     # User's favorite institutions
     st.markdown("### ⭐ My Favorite Institutions")
