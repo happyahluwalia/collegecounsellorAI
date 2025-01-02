@@ -15,13 +15,17 @@ logger = logging.getLogger(__name__)
 
 class ActionableItem:
     """Represents an actionable item detected in the agent's response"""
-    def __init__(self, category: str, year: str, url: Optional[str] = None):
+    def __init__(self, item_id: str, text: str, category: str, year: str, url: Optional[str] = None):
+        self.item_id = item_id
+        self.text = text
         self.category = category
         self.year = year
         self.url = url
 
     def to_dict(self) -> Dict:
         return {
+            "id": self.item_id,
+            "text": self.text,
             "category": self.category,
             "year": self.year,
             "url": self.url
@@ -35,40 +39,101 @@ class PrimaryCounselorAgent(BaseAgent):
         self.db = Database()
         logger.info(f"Initialized {self.__class__.__name__} with config: {self.config}")
 
-    def _parse_system_message(self, response: str) -> Optional[ActionableItem]:
-        """Parse system message to extract actionable item details"""
+    def _parse_actionable_items(self, response: str) -> List[ActionableItem]:
+        """Parse response to find actionable items and their details"""
         try:
+            # Extract all actionable tags with their content
+            actionable_pattern = r'<actionable id="([^"]+)">(.*?)</actionable>'
+            actionable_matches = re.finditer(actionable_pattern, response, re.DOTALL)
+
+            # Extract system message
             system_pattern = r'\[system\](.*?)\[/system\]'
-            match = re.search(system_pattern, response, re.DOTALL)
+            system_match = re.search(system_pattern, response, re.DOTALL)
 
-            if match:
-                system_content = match.group(1).strip()
-                # Parse key-value pairs
-                pairs = {}
-                for line in system_content.split('\n'):
-                    if ':' in line:
+            if not system_match:
+                return []
+
+            # Parse system metadata
+            system_content = system_match.group(1).strip()
+            metadata = {}
+            current_id = None
+            current_metadata = {}
+
+            for line in system_content.split('\n'):
+                line = line.strip()
+                if line:
+                    if line.startswith('[') and line.endswith(']'):
+                        # If we have a previous item, save it
+                        if current_id is not None and current_metadata:
+                            metadata[current_id] = current_metadata
+                        # Start new item
+                        current_id = line[1:-1]
+                        current_metadata = {}
+                    elif ':' in line and current_id is not None:
                         key, value = line.split(':', 1)
-                        pairs[key.strip().lower()] = value.strip()
+                        current_metadata[key.strip().lower()] = value.strip()
 
-                return ActionableItem(
-                    category=pairs.get('category', ''),
-                    year=pairs.get('year', ''),
-                    url=pairs.get('url')
-                )
-            return None
+            # Save the last item
+            if current_id is not None and current_metadata:
+                metadata[current_id] = current_metadata
+
+            # Create ActionableItem objects
+            actionable_items = []
+            for match in actionable_matches:
+                item_id = match.group(1)
+                text = match.group(2).strip()
+                if item_id in metadata:
+                    item_meta = metadata[item_id]
+                    actionable_items.append(
+                        ActionableItem(
+                            item_id=item_id,
+                            text=text,
+                            category=item_meta.get('category', ''),
+                            year=item_meta.get('year', ''),
+                            url=item_meta.get('url')
+                        )
+                    )
+
+            return actionable_items
+
         except Exception as e:
-            logger.error(f"Error parsing system message: {str(e)}")
-            return None
+            logger.error(f"Error parsing actionable items: {str(e)}")
+            return []
 
-    def _format_response_with_actionable(self, response: str, actionable_item: Optional[ActionableItem]) -> Dict:
-        """Format the response with actionable item if present"""
-        # Remove system message from displayed response
+    def _format_response_with_actionable(self, response: str, actionable_items: List[ActionableItem]) -> Dict:
+        """Format the response by removing system message and actionable tags"""
+        # Remove system message
         display_response = re.sub(r'\[system\].*?\[/system\]', '', response, flags=re.DOTALL).strip()
+
+        # Remove actionable tags but keep the content
+        for item in actionable_items:
+            display_response = display_response.replace(
+                f'<actionable id="{item.item_id}">{item.text}</actionable>',
+                f'**{item.text}**'
+            )
 
         return {
             "content": display_response,
-            "actionable_item": actionable_item.to_dict() if actionable_item else None
+            "actionable_items": [item.to_dict() for item in actionable_items]
         }
+
+    def get_response(self, message: str, context: Optional[Dict[str, Any]] = None) -> Dict:
+        """Generate a response to the user's message with context and actionable items"""
+        try:
+            logger.info(f"{self.__class__.__name__} generating response")
+            messages = self._build_messages(message, context)
+            raw_response = self._make_api_call(messages)
+
+            # Parse actionable items
+            actionable_items = self._parse_actionable_items(raw_response)
+            formatted_response = self._format_response_with_actionable(raw_response, actionable_items)
+
+            logger.info(f"{self.__class__.__name__} successfully generated response with actionable items")
+            return formatted_response
+
+        except Exception as e:
+            logger.error(f"Error in {self.__class__.__name__}: {str(e)}")
+            raise AgentError(f"Failed to generate response in {self.__class__.__name__}")
 
     async def get_context(self, user_id: int) -> Dict:
         """Fetch relevant user context from database"""
@@ -137,23 +202,6 @@ class PrimaryCounselorAgent(BaseAgent):
             logger.error(f"Error in query routing: {str(e)}")
             return {"needs_routing": False, "target_agent": None, "reason": "Routing failed"}
 
-    def get_response(self, message: str, context: Optional[Dict[str, Any]] = None) -> Dict:
-        """Generate a response to the user's message with context and actionable items"""
-        try:
-            logger.info(f"{self.__class__.__name__} generating response")
-            messages = self._build_messages(message, context)
-            raw_response = self._make_api_call(messages)
-
-            # Parse actionable items
-            actionable_item = self._parse_system_message(raw_response)
-            formatted_response = self._format_response_with_actionable(raw_response, actionable_item)
-
-            logger.info(f"{self.__class__.__name__} successfully generated response with actionable items")
-            return formatted_response
-
-        except Exception as e:
-            logger.error(f"Error in {self.__class__.__name__}: {str(e)}")
-            raise AgentError(f"Failed to generate response in {self.__class__.__name__}")
 
     def generate_followup_questions(self, context: Dict) -> List[str]:
         """Generate relevant follow-up questions based on context"""

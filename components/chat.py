@@ -1,3 +1,4 @@
+"""Chat component for the College Compass application."""
 import streamlit as st
 from agents.orchestrator import AgentOrchestrator
 from utils.error_handling import handle_error, DatabaseError, ValidationError, AgentError
@@ -47,11 +48,27 @@ def add_to_plan(actionable_item):
             """,
             (user_id, actionable_item["category"], actionable_item["year"], actionable_item.get("url"))
         )
-        st.success("Added to your plan! 🎯")
+        st.success(f"Added '{actionable_item['text'][:50]}...' to your plan! 🎯")
         logger.info(f"Added actionable item to plan for user {user_id}")
     except Exception as e:
         logger.error(f"Failed to add item to plan: {str(e)}")
         st.error("Failed to add item to your plan. Please try again.")
+
+def render_actionable_items(actionable_items, container):
+    """Render actionable items with inline 'Add to Plan' buttons"""
+    for item in actionable_items:
+        with container:
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.markdown(
+                    f"""<span style='color: #1E88E5;'>
+                    {item['text']}
+                    </span>""", 
+                    unsafe_allow_html=True
+                )
+            with col2:
+                if st.button("➕ Add to Plan", key=f"add_plan_{item['id']}"):
+                    add_to_plan(item)
 
 @handle_error
 def render_chat():
@@ -86,22 +103,16 @@ def render_chat():
         # Display chat messages
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
-                if isinstance(message.get("content"), dict) and "content" in message["content"]:
+                if isinstance(message.get("content"), dict):
                     # Display main response
                     st.markdown(message["content"]["content"])
 
-                    # Display actionable item if present
-                    if message["content"].get("actionable_item"):
-                        with st.container():
-                            st.markdown("---")
-                            st.markdown("**📌 Actionable Item Detected:**")
-                            item = message["content"]["actionable_item"]
-                            st.markdown(f"**Category:** {item['category']}")
-                            st.markdown(f"**Relevant Years:** {item['year']}")
-                            if item.get('url'):
-                                st.markdown(f"**Resource:** [Click here]({item['url']})")
-                            if st.button("➕ Add to Plan", key=f"add_plan_{len(st.session_state.messages)}"):
-                                add_to_plan(item)
+                    # Display actionable items if present
+                    if message["content"].get("actionable_items"):
+                        render_actionable_items(
+                            message["content"]["actionable_items"],
+                            st.container()
+                        )
                 else:
                     st.markdown(message["content"])
 
@@ -134,17 +145,11 @@ def render_chat():
                                 # Display and save response
                                 if isinstance(response, dict):
                                     st.markdown(response["content"])
-                                    if response.get("actionable_item"):
-                                        with st.container():
-                                            st.markdown("---")
-                                            st.markdown("**📌 Actionable Item Detected:**")
-                                            item = response["actionable_item"]
-                                            st.markdown(f"**Category:** {item['category']}")
-                                            st.markdown(f"**Relevant Years:** {item['year']}")
-                                            if item.get('url'):
-                                                st.markdown(f"**Resource:** [Click here]({item['url']})")
-                                            if st.button("➕ Add to Plan"):
-                                                add_to_plan(item)
+                                    if response.get("actionable_items"):
+                                        render_actionable_items(
+                                            response["actionable_items"],
+                                            st.container()
+                                        )
                                 else:
                                     st.markdown(response)
 
