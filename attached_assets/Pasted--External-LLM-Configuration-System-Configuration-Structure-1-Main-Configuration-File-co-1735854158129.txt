@@ -1,0 +1,202 @@
+
+# External LLM Configuration System
+
+## Configuration Structure
+
+### 1. Main Configuration File (config/models.yaml)
+```yaml
+# Default configurations for different environments
+environments:
+  development:
+    models:
+      openai:
+        api_key: ${OPENAI_API_KEY}
+        default_timeout: 30
+        retry_attempts: 3
+      anthropic:
+        api_key: ${ANTHROPIC_API_KEY}
+        default_timeout: 30
+        retry_attempts: 3
+      google:
+        api_key: ${GOOGLE_API_KEY}
+        default_timeout: 30
+        retry_attempts: 3
+
+    agents:
+      primary_counselor:
+        provider: openai
+        model_name: gpt-4-turbo-preview
+        temperature: 0.7
+        max_tokens: 2000
+        system_prompt_template: templates/prompt/primary_counselor.txt
+        fallback:
+          provider: anthropic
+          model_name: claude-3-sonnet
+          
+      strategic_planning:
+        provider: anthropic
+        model_name: claude-3-opus
+        temperature: 0.5
+        max_tokens: 4000
+        system_prompt_template: templates/prompt/strategic_planning.txt
+        
+      timeline_management:
+        provider: openai
+        model_name: gpt-4-turbo-preview
+        temperature: 0.3
+        max_tokens: 1500
+        system_prompt_template: templates/prompt/timeline_management.txt
+        
+      essay_development:
+        provider: anthropic
+        model_name: claude-3-opus
+        temperature: 0.6
+        max_tokens: 4000
+        system_prompt_template: templates/prompt/essay_development.txt
+
+  production:
+    # Production configurations
+    # Similar structure but with production-specific settings
+```
+
+### 2. Prompt Templates File (config/prompts.yaml)
+```yaml
+templates:
+  primary_counselor:
+    base_prompt: |
+      You are an expert college counselor with deep knowledge of the college admissions process.
+      Your goal is to guide students through their college application journey.
+      
+  strategic_planning:
+    base_prompt: |
+      You are a strategic planning expert specializing in college admissions strategies.
+      Focus on creating comprehensive plans that maximize student success.
+      
+  timeline_management:
+    base_prompt: |
+      You are a timeline management specialist focused on college application deadlines.
+      Help students organize and meet their application deadlines effectively.
+```
+
+## Implementation
+
+### 1. Configuration Manager (src/config/manager.py)
+```python
+from pathlib import Path
+from typing import Optional, Dict, Any
+import yaml
+import os
+from pydantic import BaseModel, Field
+
+class ModelConfig(BaseModel):
+    provider: str
+    model_name: str
+    temperature: float = Field(0.7, ge=0.0, le=1.0)
+    max_tokens: Optional[int] = None
+    system_prompt_template: str
+    fallback: Optional[Dict[str, Any]] = None
+
+class ConfigManager:
+    def __init__(self, config_dir: str = "config"):
+        self.config_dir = Path(config_dir)
+        self.env = os.getenv("APP_ENV", "development")
+        self._config = self._load_config()
+        self._prompts = self._load_prompts()
+    
+    def _load_config(self) -> dict:
+        with open(self.config_dir / "models.yaml") as f:
+            config = yaml.safe_load(f)
+        return self._resolve_env_vars(config["environments"][self.env])
+    
+    def _load_prompts(self) -> dict:
+        with open(self.config_dir / "prompts.yaml") as f:
+            return yaml.safe_load(f)
+    
+    def _resolve_env_vars(self, config: dict) -> dict:
+        """Resolve environment variables in config values"""
+        if isinstance(config, str) and config.startswith("${") and config.endswith("}"):
+            env_var = config[2:-1]
+            return os.getenv(env_var)
+        elif isinstance(config, dict):
+            return {k: self._resolve_env_vars(v) for k, v in config.items()}
+        elif isinstance(config, list):
+            return [self._resolve_env_vars(v) for v in config]
+        return config
+    
+    def get_agent_config(self, agent_type: str) -> ModelConfig:
+        """Get configuration for specific agent"""
+        config_dict = self._config["agents"].get(agent_type)
+        if not config_dict:
+            raise ValueError(f"No configuration found for agent type: {agent_type}")
+        return ModelConfig(**config_dict)
+    
+    def get_model_api_config(self, provider: str) -> dict:
+        """Get API configuration for specific provider"""
+        return self._config["models"].get(provider, {})
+    
+    def get_prompt_template(self, template_name: str) -> str:
+        """Get prompt template by name"""
+        return self._prompts["templates"].get(template_name, {}).get("base_prompt", "")
+```
+
+### 2. Agent Base Class (src/agents/base.py)
+```python
+from abc import ABC, abstractmethod
+from src.config.manager import ConfigManager
+
+class BaseAgent(ABC):
+    def __init__(self, agent_type: str, config_manager: ConfigManager):
+        self.agent_type = agent_type
+        self.config = config_manager.get_agent_config(agent_type)
+        self.api_config = config_manager.get_model_api_config(self.config.provider)
+        self.prompt_template = config_manager.get_prompt_template(agent_type)
+        self.llm = self._initialize_llm()
+    
+    def _initialize_llm(self):
+        provider = self.config.provider
+        if provider == "openai":
+            return ChatOpenAI(
+                model_name=self.config.model_name,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+                api_key=self.api_config["api_key"]
+            )
+        elif provider == "anthropic":
+            return ChatAnthropic(
+                model=self.config.model_name,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+                api_key=self.api_config["api_key"]
+            )
+        # Add other providers as needed
+```
+
+### 3. Usage Example
+```python
+# Initialize configuration
+config_manager = ConfigManager()
+
+# Create agent with configuration
+class PrimaryCounselorAgent(BaseAgent):
+    def __init__(self, config_manager: ConfigManager):
+        super().__init__("primary_counselor", config_manager)
+    
+    async def process(self, message: str, context: dict) -> str:
+        # Use self.llm with configured settings
+        response = await self.llm.apredict(
+            f"{self.prompt_template}\n\nUser: {message}",
+            **context
+        )
+        return response
+
+# Create agent instance
+agent = PrimaryCounselorAgent(config_manager)
+```
+
+This configuration system provides several benefits:
+
+1. **Separation of Concerns**: All configuration is external to code
+2. **Environment-Specific Settings**: Easy to switch between development/production
+3. **Flexible and Maintainable**: Easy to update settings without code changes
+4. **Version Control**: Configuration can be version controlled separately
+5. **Security**: Sensitive values can be loaded from environment variables

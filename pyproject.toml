@@ -17,4 +17,6 @@ dependencies = [
     "icalendar>=6.1.0",
     "pytz>=2024.2",
     "langchain-openai>=0.2.14",
+    "pyyaml>=6.0.2",
+    "pydantic>=2.10.4",
 ]

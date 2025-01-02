@@ -1,0 +1,44 @@
+# Default configurations for different environments
+environments:
+  development:
+    models:
+      openai:
+        api_key: ${OPENAI_API_KEY}
+        default_timeout: 30
+        retry_attempts: 3
+      anthropic:
+        api_key: ${ANTHROPIC_API_KEY}
+        default_timeout: 30
+        retry_attempts: 3
+
+    agents:
+      primary_counselor:
+        provider: openai
+        model_name: gpt-4-turbo-preview
+        temperature: 0.7
+        max_tokens: 2000
+        system_prompt_template: templates/prompt/primary_counselor.txt
+        fallback:
+          provider: anthropic
+          model_name: claude-3-sonnet
+          
+      strategic_planning:
+        provider: anthropic
+        model_name: claude-3-opus
+        temperature: 0.5
+        max_tokens: 4000
+        system_prompt_template: templates/prompt/strategic_planning.txt
+        
+      timeline_management:
+        provider: openai
+        model_name: gpt-4-turbo-preview
+        temperature: 0.3
+        max_tokens: 1500
+        system_prompt_template: templates/prompt/timeline_management.txt
+
+  production:
+    # Production configurations inherit from development
+    # Override specific settings as needed
+    models:
+      openai:
+        retry_attempts: 5
