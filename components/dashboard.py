@@ -86,6 +86,3 @@ def render_dashboard():
     with col3:
         # Render achievements panel
         render_achievements()
-
-# Export the dashboard renderer - it needs to be at the module level
-__all__ = ['render_dashboard']
