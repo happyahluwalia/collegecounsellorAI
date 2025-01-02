@@ -28,33 +28,30 @@ def init_chat():
     if 'current_session_id' not in st.session_state:
         st.session_state.current_session_id = None
 
-@handle_error
-def load_chat_session(session_id):
-    """Load messages from a specific chat session."""
-    if not hasattr(st.session_state, 'user'):
-        raise ValidationError("Please log in to access chat sessions")
-
+def add_to_plan(actionable_item):
+    """Add an actionable item to the student's plan"""
     try:
+        if not hasattr(st.session_state, 'user'):
+            st.warning("Please log in to add items to your plan")
+            return
+
         db = st.session_state.user.db
-        messages = db.execute(
+        user_id = st.session_state.user.id
+
+        # Add to plan table
+        db.execute(
             """
-            SELECT content, role 
-            FROM messages 
-            WHERE session_id = %s 
-            ORDER BY created_at
+            INSERT INTO plan_items 
+            (user_id, category, year, url, status)
+            VALUES (%s, %s, %s, %s, 'pending')
             """,
-            (session_id,)
+            (user_id, actionable_item["category"], actionable_item["year"], actionable_item.get("url"))
         )
-        st.session_state.messages = [
-            {"role": msg["role"], "content": msg["content"]} 
-            for msg in messages
-        ]
-        st.session_state.current_session_id = session_id
-        logger.info(f"Loaded chat session {session_id}")
-    except DatabaseError as e:
-        error_trace = traceback.format_exc()
-        logger.error(f"Failed to load chat session {session_id}: {str(e)}\n{error_trace}")
-        raise DatabaseError("Unable to load chat history")
+        st.success("Added to your plan! 🎯")
+        logger.info(f"Added actionable item to plan for user {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to add item to plan: {str(e)}")
+        st.error("Failed to add item to your plan. Please try again.")
 
 @handle_error
 def render_chat():
@@ -89,7 +86,24 @@ def render_chat():
         # Display chat messages
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+                if isinstance(message.get("content"), dict) and "content" in message["content"]:
+                    # Display main response
+                    st.markdown(message["content"]["content"])
+
+                    # Display actionable item if present
+                    if message["content"].get("actionable_item"):
+                        with st.container():
+                            st.markdown("---")
+                            st.markdown("**📌 Actionable Item Detected:**")
+                            item = message["content"]["actionable_item"]
+                            st.markdown(f"**Category:** {item['category']}")
+                            st.markdown(f"**Relevant Years:** {item['year']}")
+                            if item.get('url'):
+                                st.markdown(f"**Resource:** [Click here]({item['url']})")
+                            if st.button("➕ Add to Plan", key=f"add_plan_{len(st.session_state.messages)}"):
+                                add_to_plan(item)
+                else:
+                    st.markdown(message["content"])
 
         # Chat input
         if prompt := st.chat_input("Ask your college admissions question..."):
@@ -103,7 +117,6 @@ def render_chat():
                 with st.chat_message("assistant"):
                     with st.spinner("Thinking..."):
                         try:
-                            # Process message through agent orchestrator
                             logger.info(f"Processing message through agent orchestrator: {prompt[:100]}...")
 
                             # Run the async function in the event loop
@@ -119,7 +132,22 @@ def render_chat():
                                 logger.info("Successfully got response from agent orchestrator")
 
                                 # Display and save response
-                                st.markdown(response)
+                                if isinstance(response, dict):
+                                    st.markdown(response["content"])
+                                    if response.get("actionable_item"):
+                                        with st.container():
+                                            st.markdown("---")
+                                            st.markdown("**📌 Actionable Item Detected:**")
+                                            item = response["actionable_item"]
+                                            st.markdown(f"**Category:** {item['category']}")
+                                            st.markdown(f"**Relevant Years:** {item['year']}")
+                                            if item.get('url'):
+                                                st.markdown(f"**Resource:** [Click here]({item['url']})")
+                                            if st.button("➕ Add to Plan"):
+                                                add_to_plan(item)
+                                else:
+                                    st.markdown(response)
+
                                 st.session_state.messages.append({"role": "assistant", "content": response})
 
                                 # Save chat session if user is authenticated
@@ -182,11 +210,16 @@ def save_chat_session(prompt, response):
 
         # Save messages
         session_id = st.session_state.current_session_id
+
+        # Handle response based on its type
+        response_content = response["content"] if isinstance(response, dict) else response
+
         db.execute(
             "INSERT INTO messages (session_id, content, role) VALUES (%s, %s, %s), (%s, %s, %s)",
-            (session_id, prompt, 'user', session_id, response, 'assistant')
+            (session_id, prompt, 'user', session_id, response_content, 'assistant')
         )
         logger.info(f"Saved messages to session {session_id}")
+
     except DatabaseError as e:
         error_trace = traceback.format_exc()
         logger.error(f"Failed to save chat session: {str(e)}\n{error_trace}")

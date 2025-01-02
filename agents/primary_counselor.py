@@ -3,14 +3,29 @@ Primary Counselor Agent (PCA) implementation.
 This agent serves as the main interface for student interaction and conversation management.
 """
 
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Any
 import logging
+import re
 from .base import BaseAgent, AgentError
 from models.database import Database
 from src.config.manager import ConfigManager
 import json
 
 logger = logging.getLogger(__name__)
+
+class ActionableItem:
+    """Represents an actionable item detected in the agent's response"""
+    def __init__(self, category: str, year: str, url: Optional[str] = None):
+        self.category = category
+        self.year = year
+        self.url = url
+
+    def to_dict(self) -> Dict:
+        return {
+            "category": self.category,
+            "year": self.year,
+            "url": self.url
+        }
 
 class PrimaryCounselorAgent(BaseAgent):
     """Primary counselor agent that manages main student interactions"""
@@ -19,6 +34,41 @@ class PrimaryCounselorAgent(BaseAgent):
         super().__init__(agent_type=agent_type, config_manager=config_manager)
         self.db = Database()
         logger.info(f"Initialized {self.__class__.__name__} with config: {self.config}")
+
+    def _parse_system_message(self, response: str) -> Optional[ActionableItem]:
+        """Parse system message to extract actionable item details"""
+        try:
+            system_pattern = r'\[system\](.*?)\[/system\]'
+            match = re.search(system_pattern, response, re.DOTALL)
+
+            if match:
+                system_content = match.group(1).strip()
+                # Parse key-value pairs
+                pairs = {}
+                for line in system_content.split('\n'):
+                    if ':' in line:
+                        key, value = line.split(':', 1)
+                        pairs[key.strip().lower()] = value.strip()
+
+                return ActionableItem(
+                    category=pairs.get('category', ''),
+                    year=pairs.get('year', ''),
+                    url=pairs.get('url')
+                )
+            return None
+        except Exception as e:
+            logger.error(f"Error parsing system message: {str(e)}")
+            return None
+
+    def _format_response_with_actionable(self, response: str, actionable_item: Optional[ActionableItem]) -> Dict:
+        """Format the response with actionable item if present"""
+        # Remove system message from displayed response
+        display_response = re.sub(r'\[system\].*?\[/system\]', '', response, flags=re.DOTALL).strip()
+
+        return {
+            "content": display_response,
+            "actionable_item": actionable_item.to_dict() if actionable_item else None
+        }
 
     async def get_context(self, user_id: int) -> Dict:
         """Fetch relevant user context from database"""
@@ -86,6 +136,24 @@ class PrimaryCounselorAgent(BaseAgent):
         except Exception as e:
             logger.error(f"Error in query routing: {str(e)}")
             return {"needs_routing": False, "target_agent": None, "reason": "Routing failed"}
+
+    def get_response(self, message: str, context: Optional[Dict[str, Any]] = None) -> Dict:
+        """Generate a response to the user's message with context and actionable items"""
+        try:
+            logger.info(f"{self.__class__.__name__} generating response")
+            messages = self._build_messages(message, context)
+            raw_response = self._make_api_call(messages)
+
+            # Parse actionable items
+            actionable_item = self._parse_system_message(raw_response)
+            formatted_response = self._format_response_with_actionable(raw_response, actionable_item)
+
+            logger.info(f"{self.__class__.__name__} successfully generated response with actionable items")
+            return formatted_response
+
+        except Exception as e:
+            logger.error(f"Error in {self.__class__.__name__}: {str(e)}")
+            raise AgentError(f"Failed to generate response in {self.__class__.__name__}")
 
     def generate_followup_questions(self, context: Dict) -> List[str]:
         """Generate relevant follow-up questions based on context"""
