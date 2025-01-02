@@ -16,6 +16,4 @@ dependencies = [
     "pandas>=2.2.3",
     "icalendar>=6.1.0",
     "pytz>=2024.2",
-    "twilio>=9.4.1",
-    "trafilatura>=2.0.0",
 ]
