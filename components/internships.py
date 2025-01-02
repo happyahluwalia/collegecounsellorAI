@@ -49,27 +49,42 @@ def initialize_sample_programs():
             ]
 
             for program in sample_programs:
-                # Convert lists and dicts to JSON strings for storage
-                program['subject_areas'] = json.dumps(program['subject_areas'])
-                program['grade_levels'] = json.dumps(program['grade_levels'])
-                program['locations'] = json.dumps(program['locations'])
-                program['requirements'] = json.dumps(program['requirements'])
+                try:
+                    # Convert Python objects to JSON strings
+                    program_data = {
+                        'name': program['name'],
+                        'organization': program['organization'],
+                        'description': program['description'],
+                        'website_url': program['website_url'],
+                        'program_type': program['program_type'],
+                        'subject_areas': json.dumps(program['subject_areas']),
+                        'grade_levels': json.dumps(program['grade_levels']),
+                        'application_deadline': program['application_deadline'],
+                        'program_duration': program['program_duration'],
+                        'location_type': program['location_type'],
+                        'locations': json.dumps(program['locations']),
+                        'requirements': json.dumps(program['requirements'])
+                    }
 
-                db.execute("""
-                    INSERT INTO internship_programs (
-                        name, organization, description, website_url, program_type,
-                        subject_areas, grade_levels, application_deadline,
-                        program_duration, location_type, locations, requirements
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    program['name'], program['organization'], program['description'],
-                    program['website_url'], program['program_type'], program['subject_areas'],
-                    program['grade_levels'], program['application_deadline'],
-                    program['program_duration'], program['location_type'],
-                    program['locations'], program['requirements']
-                ))
+                    db.execute("""
+                        INSERT INTO internship_programs (
+                            name, organization, description, website_url, program_type,
+                            subject_areas, grade_levels, application_deadline,
+                            program_duration, location_type, locations, requirements
+                        ) VALUES (
+                            %(name)s, %(organization)s, %(description)s, %(website_url)s,
+                            %(program_type)s, %(subject_areas)s::jsonb, %(grade_levels)s::jsonb,
+                            %(application_deadline)s, %(program_duration)s, %(location_type)s,
+                            %(locations)s::jsonb, %(requirements)s::jsonb
+                        )
+                    """, program_data)
+
+                except Exception as e:
+                    logger.error(f"Error inserting program {program['name']}: {str(e)}")
+                    continue
 
             logger.info("Sample internship programs initialized")
+
     except Exception as e:
         error_trace = traceback.format_exc()
         logger.error(f"Error initializing sample programs: {str(e)}\n{error_trace}")
@@ -93,9 +108,9 @@ def get_student_interests() -> List[str]:
 
         interests = set()
         if profile['interests']:
-            interests.update(profile['interests'])
+            interests.update(json.loads(profile['interests']))
         if profile['target_majors']:
-            interests.update(profile['target_majors'])
+            interests.update(json.loads(profile['target_majors']))
 
         return list(interests)
     except Exception as e:
@@ -108,8 +123,10 @@ def render_program_browser(interests: List[str]):
         st.subheader("Available Programs")
 
         # Define available options
-        program_types = ["Summer Research", "Leadership Development", "Research & Development",
-                        "Internship", "Workshop", "Fellowship"]
+        program_types = [
+            "Summer Research", "Leadership Development",
+            "Research & Development", "Internship", "Workshop", "Fellowship"
+        ]
 
         subject_areas = [
             "Mathematics", "Science", "Engineering", "Computer Science",
@@ -146,24 +163,37 @@ def render_program_browser(interests: List[str]):
                 placeholder="All Locations"
             )
 
-        # Fetch programs with filters
+        # Fetch programs with filters using parameterized query
         db = Database()
+        query_params = {}
+        conditions = []
+
+        # Build dynamic query conditions
+        if selected_types:
+            conditions.append("program_type = ANY(%(types)s)")
+            query_params['types'] = selected_types
+
+        if selected_subjects:
+            conditions.append("""
+                EXISTS (
+                    SELECT 1 FROM jsonb_array_elements_text(subject_areas) subject
+                    WHERE subject = ANY(%(subjects)s)
+                )
+            """)
+            query_params['subjects'] = selected_subjects
+
+        if selected_locations:
+            conditions.append("location_type = ANY(%(locations)s)")
+            query_params['locations'] = selected_locations
+
+        # Construct final query
         query = """
             SELECT * FROM internship_programs
-            WHERE (CARDINALITY(%s::text[]) = 0 OR program_type = ANY(%s))
-            AND (CARDINALITY(%s::text[]) = 0 OR EXISTS (
-                SELECT 1
-                FROM jsonb_array_elements_text(subject_areas::jsonb) subject
-                WHERE subject = ANY(%s)
-            ))
-            AND (CARDINALITY(%s::text[]) = 0 OR location_type = ANY(%s))
-            ORDER BY application_deadline
-        """
-        programs = db.execute(query, (
-            selected_types, selected_types,
-            selected_subjects, selected_subjects,
-            selected_locations, selected_locations
-        ))
+            {}
+            ORDER BY application_deadline;
+        """.format(" WHERE " + " AND ".join(conditions) if conditions else "")
+
+        programs = db.execute(query, query_params)
 
         # Display programs
         for program in programs:
@@ -178,7 +208,6 @@ def render_program_browser(interests: List[str]):
                 st.markdown(f"**Duration:** {program['program_duration']}")
                 st.markdown(f"**Location Type:** {program['location_type']}")
 
-                # Parse JSON strings back to Python objects
                 locations = json.loads(program['locations'])
                 if locations:
                     st.markdown("**Locations:** " + ", ".join(locations))
@@ -208,7 +237,8 @@ def render_program_browser(interests: List[str]):
                         st.write(f"Applied: {status['application_date'].strftime('%B %d, %Y')}")
 
                 # Action buttons
-                if st.button("Mark Interested", key=f"interested_{program['id']}"):
+                button_key = f"interested_{program['id']}"
+                if st.button("Mark Interested", key=button_key):
                     try:
                         db.execute("""
                             INSERT INTO internship_applications (user_id, program_id, status)
@@ -271,20 +301,21 @@ def render_applications():
                         col1, col2 = st.columns([3, 1])
 
                         with col1:
-                            # Application details
                             st.markdown(f"**Deadline:** {app['application_deadline'].strftime('%B %d, %Y')}")
                             if app['application_date']:
                                 st.markdown(f"**Applied:** {app['application_date'].strftime('%B %d, %Y')}")
 
                             # Notes editor
+                            notes_key = f"notes_{app['id']}"
                             new_notes = st.text_area(
                                 "Application Notes",
                                 value=app['notes'] or '',
-                                key=f"notes_{status}_{app['id']}"
+                                key=notes_key
                             )
 
                             if new_notes != app['notes']:
-                                if st.button("Update Notes", key=f"update_notes_{status}_{app['id']}"):
+                                update_key = f"update_notes_{app['id']}"
+                                if st.button("Update Notes", key=update_key):
                                     try:
                                         db.execute("""
                                             UPDATE internship_applications
@@ -298,11 +329,12 @@ def render_applications():
 
                         with col2:
                             # Status updater
+                            status_key = f"status_{app['id']}"
                             new_status = st.selectbox(
                                 "Update Status",
                                 status_order,
                                 index=status_order.index(app['status']),
-                                key=f"status_{status}_{app['id']}"
+                                key=status_key
                             )
 
                             if new_status != app['status']:
