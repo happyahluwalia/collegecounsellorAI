@@ -5,7 +5,7 @@ from components.achievements import render_achievements
 from components.college_matches import render_college_matches
 from components.timeline import render_timeline
 from components.internships import render_internships
-from components.college_explorer import render_college_explorer  # New import
+from components.college_explorer import render_college_explorer
 from models.achievement import Achievement
 from utils.error_handling import handle_error, DatabaseError
 import logging
@@ -13,7 +13,7 @@ import traceback
 
 logger = logging.getLogger(__name__)
 
-def show_error_message(error_message, error_trace=None):
+def show_error_message(error_message: str, error_trace: str = None):
     """Display an error message with expandable details."""
     st.error(error_message)
     if error_trace:
@@ -87,5 +87,5 @@ def render_dashboard():
         # Render achievements panel
         render_achievements()
 
-# Make sure the function is properly exported
+# Export the dashboard renderer
 __all__ = ['render_dashboard']
