@@ -36,8 +36,7 @@ def add_to_plan(actionable_item):
     """Add an actionable item to the student's plan"""
     try:
         if not hasattr(st.session_state, 'user'):
-            st.warning("Please log in to add items to your plan")
-            return False
+            return False, "Please log in to add items to your plan"
 
         logger.info(f"Adding item to plan: {actionable_item}")
 
@@ -49,7 +48,7 @@ def add_to_plan(actionable_item):
         for field in required_fields:
             if field not in actionable_item:
                 logger.error(f"Missing required field: {field}")
-                raise ValidationError(f"Missing required field: {field}")
+                return False, f"Missing required field: {field}"
 
         try:
             # Insert into plan_items table
@@ -71,15 +70,15 @@ def add_to_plan(actionable_item):
             )
 
             logger.info("Successfully added item to plan")
-            return True
+            return True, "Added to plan successfully!"
 
         except Exception as db_error:
             logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
-            raise DatabaseError("Failed to add item to plan")
+            return False, "Database error: Failed to add item to plan"
 
     except Exception as e:
         logger.error(f"Error in add_to_plan: {str(e)}\n{traceback.format_exc()}")
-        raise
+        return False, str(e)
 
 def parse_and_render_message(content: str, actionable_items: list):
     """Parse message content and render with inline Add to Plan buttons"""
@@ -126,19 +125,16 @@ def parse_and_render_message(content: str, actionable_items: list):
                         with col1:
                             st.markdown(text)
                         with col2:
-                            # Use a container for better alignment
-                            with st.container():
-                                try:
-                                    st.markdown("➕")  # Icon on first line
-                                    if st.button("Add to Plan", key=unique_key, help="Add this item to your plan"):
-                                        success = add_to_plan(item)
-                                        if success:
-                                            st.toast("✅ Added to plan!", icon="✅")
-                                        else:
-                                            st.warning("Please log in to add items to your plan")
-                                except Exception as button_error:
-                                    logger.error(f"Error with add to plan button: {str(button_error)}")
-                                    st.error("Failed to add to plan. Please try again.")
+                            try:
+                                st.markdown("➕")  # Icon on first line
+                                if st.link_button("Add to plan", help="Add this item to your plan"):
+                                    success, message = add_to_plan(item)
+                                    if success:
+                                        st.toast("✅ Added to plan!", icon="✅")
+                                    else:
+                                        st.warning(message)
+                            except Exception as button_error:
+                                logger.error(f"Error with add to plan button: {str(button_error)}")
 
                     last_end = match.end()
 
@@ -152,8 +148,7 @@ def parse_and_render_message(content: str, actionable_items: list):
     except Exception as e:
         error_trace = traceback.format_exc()
         logger.error(f"Error parsing message: {str(e)}\n{error_trace}")
-        # Show error with stack trace option
-        st.error("Error displaying message content. Check logs for details.")
+        st.error("Error displaying message content")
         if st.checkbox("Show Error Details"):
             st.code(error_trace)
 
