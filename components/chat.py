@@ -74,11 +74,13 @@ def add_to_plan(actionable_item):
 
         except Exception as db_error:
             logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
-            raise DatabaseError(f"Failed to add item to plan: {str(db_error)}")
+            st.error("Failed to add item to your plan. Please try again.")
+            return False
 
     except Exception as e:
         logger.error(f"Error in add_to_plan: {str(e)}\n{traceback.format_exc()}")
-        raise
+        st.error("Failed to add item to your plan. Please try again.")
+        return False
 
 def parse_and_render_message(content: str, actionable_items: list):
     """Parse message content and render with inline Add to Plan links"""
@@ -114,21 +116,13 @@ def parse_and_render_message(content: str, actionable_items: list):
                         # Generate a unique key for this specific item
                         unique_key = f"add_plan_{p_idx}_{item_id}"
 
-                        # Display the text and link in a clean format
-                        st.markdown(
-                            f"{text} "
-                            f"<a href='#' id='{unique_key}' "
-                            f"onclick='handleAddToPlan(this); return false;' "
-                            f"style='color: #4CAF50; text-decoration: none;'>"
-                            f"➕ Add to Plan</a>", 
-                            unsafe_allow_html=True
-                        )
-
-                        # Add a hidden button that will be triggered by JavaScript
-                        if st.button("Add", key=unique_key, type="primary", args=(actionable_map[item_id],)):
-                            success = add_to_plan(actionable_map[item_id])
-                            if success:
-                                st.success(f"✅ Added to your plan!")
+                        # Create a container for the text and link
+                        with st.container():
+                            # Display the text and link in a clean format
+                            if st.button("➕ Add to Plan", key=unique_key, type="secondary"):
+                                if add_to_plan(actionable_map[item_id]):
+                                    st.toast('✅ Added to plan', icon='✅')
+                            st.markdown(text)
 
                     last_end = match.end()
 
