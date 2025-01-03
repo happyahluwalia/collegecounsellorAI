@@ -77,22 +77,26 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
             )
             logger.debug(f"SQL Parameters: {params}")
 
+            # Execute a test query to verify database connection
+            test_result = db.execute_one("SELECT NOW()")
+            logger.info(f"Database connection test: {test_result}")
+
             # Start a transaction
             db.execute("BEGIN")
 
             try:
                 logger.info("Starting database insertion...")
                 # Insert into plan_items table
-                result = db.execute(
-                    """
-                    INSERT INTO plan_items 
-                    (user_id, activity_text, category, grade_year, url, status, metadata)
-                    VALUES (%s, %s, %s, %s, %s, 'pending', %s)
-                    RETURNING id;
-                    """,
-                    params,
-                    fetch_all=True  # Ensure we get the result
-                )
+                insert_sql = """
+                INSERT INTO plan_items 
+                (user_id, activity_text, category, grade_year, url, status, metadata)
+                VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+                RETURNING id, activity_text;
+                """
+                logger.debug(f"Executing SQL: {insert_sql} with params: {params}")
+
+                result = db.execute(insert_sql, params, fetch_all=True)
+                logger.info(f"Insert result: {result}")
 
                 if not result:
                     logger.error("No result returned from INSERT")
@@ -103,22 +107,18 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
                 logger.info(f"Successfully added item to plan with ID: {inserted_id}")
 
                 # Verify the insertion
-                verification = db.execute(
-                    """
-                    SELECT id, activity_text, category, grade_year 
-                    FROM plan_items 
-                    WHERE id = %s
-                    """,
-                    (inserted_id,),
-                    fetch_all=True
-                )
+                verification_sql = """
+                SELECT id, activity_text, category, grade_year 
+                FROM plan_items 
+                WHERE id = %s
+                """
+                verification = db.execute(verification_sql, (inserted_id,), fetch_all=True)
+                logger.info(f"Verification result: {verification}")
 
                 if not verification:
                     logger.error("Verification failed - inserted row not found")
                     db.execute("ROLLBACK")
                     return False, "Failed to verify item insertion"
-
-                logger.info(f"Verification result: {verification}")
 
                 # Commit the transaction
                 db.execute("COMMIT")
@@ -189,15 +189,25 @@ def parse_and_render_message(content: str, actionable_items: list):
                             # Generate a unique key for this button
                             unique_key = generate_unique_key("add", item_id)
                             logger.info(f"Creating Add button with key: {unique_key} for item: {item_id}")
-                            button_clicked = st.button("➕ Add", key=unique_key, help="Add this item to your plan")
-                            logger.info(f"Button {unique_key} clicked: {button_clicked}")
-                            if button_clicked:
-                                logger.info(f"Add button clicked for item: {item_id}")
-                                success, message = add_to_plan(item)
-                                if success:
-                                    st.toast("✅ Added to plan!", icon="✅")
-                                else:
-                                    st.warning(message)
+
+                            # Create a session state key for this button if it doesn't exist
+                            button_key = f"button_clicked_{unique_key}"
+                            if button_key not in st.session_state:
+                                st.session_state[button_key] = False
+
+                            # Create the button and handle click
+                            if st.button("➕ Add", key=unique_key, help="Add this item to your plan"):
+                                logger.info(f"Button {unique_key} clicked!")
+                                if not st.session_state[button_key]:  # Only execute if not already clicked
+                                    logger.info(f"Processing click for item: {item_id}")
+                                    st.session_state[button_key] = True
+                                    success, message = add_to_plan(item)
+                                    if success:
+                                        st.toast("✅ Added to plan!", icon="✅")
+                                        logger.info(f"Successfully added item {item_id} to plan")
+                                    else:
+                                        st.warning(message)
+                                        logger.error(f"Failed to add item {item_id}: {message}")
 
                     last_end = match.end()
 
