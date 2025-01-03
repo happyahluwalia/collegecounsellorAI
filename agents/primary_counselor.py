@@ -84,13 +84,19 @@ class PrimaryCounselorAgent(BaseAgent):
         """Parse response to find actionable items and their details"""
         try:
             logger.info("Parsing response for actionable items")
-            logger.debug(f"Raw response: {response}")
+            logger.debug(f"Raw response content:\n{response}")  # Add debug logging for raw content
 
             # Extract all actionable tags with their content
-            actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
+            actionable_pattern = r'<actionable id="([^"]+)">(.*?)</actionable>'
             actionable_matches = re.finditer(actionable_pattern, response, re.DOTALL)
             matches_list = list(actionable_matches)
             logger.info(f"Found {len(matches_list)} actionable tags in response")
+
+            if len(matches_list) == 0:
+                logger.debug("No matches found. Pattern used: %s", actionable_pattern)
+                # Try findall to double check
+                alt_matches = re.findall(actionable_pattern, response, re.DOTALL)
+                logger.debug("Alternate findall found %d matches: %s", len(alt_matches), alt_matches)
 
             # Extract system message
             system_pattern = r'\[system\]\s*actionable:\s*(.*?)\s*\[/system\]'
