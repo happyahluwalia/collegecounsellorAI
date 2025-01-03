@@ -39,16 +39,25 @@ def add_to_plan(actionable_item):
             st.warning("Please log in to add items to your plan")
             return False
 
+        logger.info(f"Adding item to plan: {actionable_item}")
+
         db = st.session_state.user.db
         user_id = st.session_state.user.id
 
         # Add to plan table with enhanced schema
         try:
+            # Log the values being inserted
+            logger.info(f"Inserting plan item - User ID: {user_id}, "
+                       f"Text: {actionable_item['text'][:50]}..., "
+                       f"Category: {actionable_item['category']}, "
+                       f"Year: {actionable_item['year']}")
+
             db.execute(
                 """
                 INSERT INTO plan_items 
                 (user_id, activity_text, category, grade_year, url, status, metadata)
                 VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+                RETURNING id
                 """,
                 (
                     user_id, 
@@ -59,65 +68,80 @@ def add_to_plan(actionable_item):
                     json.dumps({"source": "chat_recommendation"})
                 )
             )
-            st.success(f"Added to your plan! 🎯")
-            logger.info(f"Added actionable item to plan for user {user_id}")
+
+            logger.info("Successfully added item to plan")
             return True
+
         except Exception as db_error:
-            logger.error(f"Database error adding item to plan: {str(db_error)}")
-            st.error("Failed to add item to your plan. Please try again.")
-            return False
+            logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
+            raise DatabaseError(f"Failed to add item to plan: {str(db_error)}")
 
     except Exception as e:
-        logger.error(f"Failed to add item to plan: {str(e)}")
-        st.error("Failed to add item to your plan. Please try again.")
-        return False
+        logger.error(f"Error in add_to_plan: {str(e)}\n{traceback.format_exc()}")
+        raise
 
 def parse_and_render_message(content: str, actionable_items: list):
-    """Parse message content and render with inline Add to Plan buttons"""
-    # Create a mapping of item_id to item details
-    actionable_map = {str(item['id']): item for item in actionable_items}
+    """Parse message content and render with inline Add to Plan links"""
+    try:
+        # Create a mapping of item_id to item details
+        actionable_map = {str(item['id']): item for item in actionable_items}
+        logger.info(f"Actionable items map: {actionable_map}")
 
-    # Split the content into paragraphs
-    paragraphs = content.split('\n\n')
+        # Split the content into paragraphs
+        paragraphs = content.split('\n\n')
 
-    for p_idx, paragraph in enumerate(paragraphs):
-        # Check if this paragraph contains any actionable items
-        actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
-        matches = list(re.finditer(actionable_pattern, paragraph))
+        for p_idx, paragraph in enumerate(paragraphs):
+            # Check if this paragraph contains any actionable items
+            actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
+            matches = list(re.finditer(actionable_pattern, paragraph))
+            logger.debug(f"Found {len(matches)} actionable items in paragraph {p_idx}")
 
-        if matches:
-            # If paragraph contains actionable items, process them
-            last_end = 0
-            for match_idx, match in enumerate(matches):
-                # Print text before the actionable item
-                if match.start() > last_end:
-                    st.markdown(paragraph[last_end:match.start()])
+            if matches:
+                # If paragraph contains actionable items, process them
+                last_end = 0
+                for match in matches:
+                    # Print text before the actionable item
+                    if match.start() > last_end:
+                        st.markdown(paragraph[last_end:match.start()])
 
-                # Get the actionable item details
-                item_id = match.group(1)
-                text = match.group(2)
+                    # Get the actionable item details
+                    item_id = match.group(1)
+                    text = match.group(2)
 
-                if item_id in actionable_map:
-                    # Generate a unique key for this specific item
-                    unique_key = f"add_plan_{p_idx}_{match_idx}_{item_id}"
+                    logger.debug(f"Processing actionable item {item_id}: {text[:50]}...")
 
-                    # Create a container for the item and button
-                    with st.container():
-                        col1, col2 = st.columns([8, 1])
-                        with col1:
-                            st.markdown(text)
-                        with col2:
-                            if st.button("➕ Add", key=unique_key, type="secondary", use_container_width=True):
-                                add_to_plan(actionable_map[item_id])
+                    if item_id in actionable_map:
+                        # Generate a unique key for this specific item
+                        unique_key = f"add_plan_{p_idx}_{item_id}"
 
-                last_end = match.end()
+                        # Display the text and link in a clean format
+                        st.markdown(
+                            f"{text} "
+                            f"<a href='#' id='{unique_key}' "
+                            f"onclick='handleAddToPlan(this); return false;' "
+                            f"style='color: #4CAF50; text-decoration: none;'>"
+                            f"➕ Add to Plan</a>", 
+                            unsafe_allow_html=True
+                        )
 
-            # Print any remaining text after the last actionable item
-            if last_end < len(paragraph):
-                st.markdown(paragraph[last_end:])
-        else:
-            # If no actionable items in this paragraph, just print it
-            st.markdown(paragraph)
+                        # Add a hidden button that will be triggered by JavaScript
+                        if st.button("Add", key=unique_key, type="primary", args=(actionable_map[item_id],)):
+                            success = add_to_plan(actionable_map[item_id])
+                            if success:
+                                st.success(f"✅ Added to your plan!")
+
+                    last_end = match.end()
+
+                # Print any remaining text after the last actionable item
+                if last_end < len(paragraph):
+                    st.markdown(paragraph[last_end:])
+            else:
+                # If no actionable items in this paragraph, just print it
+                st.markdown(paragraph)
+
+    except Exception as e:
+        logger.error(f"Error in parse_and_render_message: {str(e)}\n{traceback.format_exc()}")
+        st.error("Error displaying message content")
 
 @handle_error
 def render_chat():
