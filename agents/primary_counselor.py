@@ -93,43 +93,47 @@ class PrimaryCounselorAgent(BaseAgent):
             logger.info(f"Found {len(matches_list)} actionable tags in response")
 
             # Extract system message
-            system_pattern = r'\[system\](.*?)\[/system\]'
+            system_pattern = r'\[system\]\s*actionable:\s*(.*?)\s*\[/system\]'
             system_match = re.search(system_pattern, response, re.DOTALL)
 
             if not system_match:
-                logger.warning("No system message found in response")
+                logger.error("No system message found in response")
+                logger.debug("Response content:\n" + response)
                 return []
 
             # Parse system metadata
             system_content = system_match.group(1).strip()
             logger.debug(f"System content: {system_content}")
             metadata = {}
-            current_id = None
-            current_metadata = {}
 
-            for line in system_content.split('\n'):
-                line = line.strip()
-                if line:
-                    if line.startswith('actionable:'):
-                        continue
-                    if line.startswith('[') and line.endswith(']'):
-                        if current_id is not None and current_metadata:
-                            metadata[current_id] = current_metadata
-                        current_id = line[1:-1]
-                        current_metadata = {}
-                    elif ':' in line and current_id is not None:
+            # Parse each item block
+            item_blocks = re.finditer(r'\[(\d+)\](.*?)(?=\[\d+\]|\Z)', system_content, re.DOTALL)
+
+            for block in item_blocks:
+                item_id = block.group(1)
+                item_content = block.group(2).strip()
+
+                # Parse item metadata
+                item_metadata = {}
+                for line in item_content.split('\n'):
+                    line = line.strip()
+                    if ':' in line:
                         key, value = line.split(':', 1)
-                        current_metadata[key.strip().lower()] = value.strip()
+                        item_metadata[key.strip().lower()] = value.strip()
 
-            # Save the last item
-            if current_id is not None and current_metadata:
-                metadata[current_id] = current_metadata
+                # Validate required fields
+                if 'category' not in item_metadata or 'year' not in item_metadata:
+                    logger.error(f"Missing required fields for item {item_id}: {item_metadata}")
+                    continue
+
+                metadata[item_id] = item_metadata
 
             # Create ActionableItem objects
             actionable_items = []
             for match in matches_list:
                 item_id = match.group(1)
                 text = match.group(2).strip()
+
                 if item_id in metadata:
                     item_meta = metadata[item_id]
                     actionable_items.append(
@@ -141,6 +145,8 @@ class PrimaryCounselorAgent(BaseAgent):
                             url=item_meta.get('url')
                         )
                     )
+                else:
+                    logger.error(f"Missing metadata for actionable item {item_id}")
 
             logger.info(f"Created {len(actionable_items)} ActionableItem objects")
             logger.debug(f"Actionable items: {[item.to_dict() for item in actionable_items]}")
@@ -172,7 +178,7 @@ class PrimaryCounselorAgent(BaseAgent):
 
             <actionable id="1">Specific action or recommendation here</actionable>
 
-            For each actionable item, include a system message at the end of your response in this exact format:
+            For each actionable item, include a system message at the END of your response in this EXACT format:
 
             [system]
             actionable:
@@ -180,7 +186,17 @@ class PrimaryCounselorAgent(BaseAgent):
             category: Category name (e.g. 'Summer Programs', 'Courses', etc.)
             year: Grade year (e.g. '9th', '10th', '11th', '12th')
             url: Optional URL for more information
-            [/system]"""
+            [2]
+            category: Next category
+            year: Grade year
+            url: Optional URL
+            [/system]
+
+            IMPORTANT: 
+            1. Make sure to include ALL actionable items in the system message
+            2. Each actionable item MUST have a corresponding entry in the system message
+            3. The system message MUST be at the END of your response
+            4. Always include category and year for each actionable item"""
 
             logger.info(f"Building messages with system prompt: {system_prompt}")
             messages = [
