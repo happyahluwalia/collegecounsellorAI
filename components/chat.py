@@ -118,20 +118,21 @@ def parse_and_render_message(content: str, actionable_items: list):
                     if item_id in actionable_map:
                         item = actionable_map[item_id]
 
-                        # Display the text and Add to Plan link in the same line
-                        st.write(
-                            f"{text} "  # Text content
-                            f"<span style='white-space: nowrap;'>"  # Keep + and text together
-                            f"[➕ Add to my plan](#)",  # The link (styled as one unit)
-                            unsafe_allow_html=True
-                        )
+                        # Create columns with better ratio
+                        cols = st.columns([0.92, 0.08])
 
-                        if st.link_button("", help="Add this item to your plan"):
-                            success, message = add_to_plan(item)
-                            if success:
-                                st.toast("✅ Added to plan!", icon="✅")
-                            else:
-                                st.warning(message)
+                        # Display the main text in the first column
+                        with cols[0]:
+                            st.markdown(text)
+
+                        # Display the Add to Plan button in the second column
+                        with cols[1]:
+                            if st.button("➕ Add", key=f"add_{p_idx}_{item_id}", help="Add this item to your plan"):
+                                success, message = add_to_plan(item)
+                                if success:
+                                    st.toast("✅ Added to plan!", icon="✅")
+                                else:
+                                    st.warning(message)
 
                     last_end = match.end()
 
