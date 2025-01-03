@@ -1,0 +1,26 @@
+2025-01-03 06:25:15,836 - models.achievement - INFO - Default achievements initialized successfully
+2025-01-03 06:25:15,909 - components.chat - INFO - Starting to parse message with 5 actionable items
+2025-01-03 06:25:15,909 - components.chat - INFO - Found 5 actionable items in content
+2025-01-03 06:25:15,909 - components.chat - INFO - Processing actionable item 1: {'id': '1', 'text': 'Apply to the NASA High School Internship Program to gain firsthand experience in aerospace projects and research.', 'category': 'Summer Programs', 'year': '9th-12th', 'url': 'https://intern.nasa.gov'}
+2025-01-03 06:25:15,910 - components.chat - INFO - Creating button with key: add_btn_1_1735885515
+2025-01-03 06:25:15,911 - components.chat - INFO - Processing actionable item 2: {'id': '2', 'text': 'Attend Space Camp at the U.S. Space and Rocket Center to experience astronaut training and space mission simulations.', 'category': 'Summer Programs', 'year': '9th-12th', 'url': 'https://www.spacecamp.com'}
+2025-01-03 06:25:15,912 - components.chat - INFO - Creating button with key: add_btn_2_1735885515
+2025-01-03 06:25:15,912 - components.chat - INFO - Processing actionable item 3: {'id': '3', 'text': 'Consider applying to the MITES program at MIT for a broader engineering and science experience, including aspects related to astronautics.', 'category': 'Summer Programs', 'year': '10th-11th', 'url': 'https://oeop.mit.edu/programs/mites'}
+2025-01-03 06:25:15,913 - components.chat - INFO - Creating button with key: add_btn_3_1735885515
+2025-01-03 06:25:15,913 - components.chat - INFO - Processing actionable item 4: {'id': '4', 'text': 'Explore the Summer Science Program in Astrophysics for an intensive research experience in space science.', 'category': 'Summer Programs', 'year': '10th-12th', 'url': 'https://summerscience.org'}
+2025-01-03 06:25:15,914 - components.chat - INFO - Creating button with key: add_btn_4_1735885515
+2025-01-03 06:25:15,915 - components.chat - INFO - Processing actionable item 5: {'id': '5', 'text': 'Join the Young Scholars Program at the University of Florida to deepen your understanding of aerospace engineering and space travel.', 'category': 'Summer Programs', 'year': '9th-12th', 'url': 'https://www.cpet.ufl.edu/students/young-scholars-program/'}
+2025-01-03 06:25:15,916 - components.chat - INFO - Creating button with key: add_btn_5_1735885515
+2025-01-03 06:25:16,198 - components.college_matches - INFO - Displayed college matches for user 4
+2025-01-03 06:25:16,459 - components.internships - ERROR - Error getting student interests: the JSON object must be str, bytes or bytearray, not list
+2025-01-03 06:25:16,501 - components.internships - ERROR - Error rendering program browser: the JSON object must be str, bytes or bytearray, not dict
+Traceback (most recent call last):
+  File "/home/runner/CollegeCounselorAI/components/internships.py", line 216, in render_program_browser
+    requirements = json.loads(program['requirements'])
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/nix/store/clx0mcir7qw8zk36zbr4jra789g3knf6-python3-3.11.10/lib/python3.11/json/__init__.py", line 339, in loads
+    raise TypeError(f'the JSON object must be str, bytes or bytearray, '
+TypeError: the JSON object must be str, bytes or bytearray, not dict
+
+2025-01-03 06:25:16,581 - components.profile - INFO - Retrieved profile for user 4
+2025-01-03 06:25:16,624 - components.achievements - INFO - Rendered achievements for user 4

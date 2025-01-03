@@ -12,6 +12,116 @@ import random
 
 logger = logging.getLogger(__name__)
 
+def handle_plan_item_add(item_id: str, item: dict) -> None:
+    """Handle adding item to plan with proper state management"""
+    state_key = f"plan_item_{item_id}_added"
+
+    # Only process if not already added
+    if state_key not in st.session_state:
+        st.session_state[state_key] = False
+
+    if not st.session_state[state_key]:
+        logger.info(f"Processing plan item add for item {item_id}")
+        try:
+            if not hasattr(st.session_state, 'user') or not st.session_state.user:
+                logger.error("No user in session state")
+                st.error("Please log in to add items to your plan")
+                return
+
+            user_id = st.session_state.user.id
+            db = st.session_state.user.db
+
+            # Insert the plan item
+            result = db.execute_one(
+                """
+                INSERT INTO plan_items 
+                (user_id, activity_text, category, grade_year, status)
+                VALUES 
+                (%s, %s, %s, %s, 'pending')
+                RETURNING id;
+                """,
+                (
+                    user_id,
+                    item["text"],
+                    item["category"],
+                    item["year"]
+                )
+            )
+
+            if result and 'id' in result:
+                logger.info(f"Successfully added plan item with ID: {result['id']}")
+                st.session_state[state_key] = True
+                st.success("✅ Added to plan!")
+            else:
+                logger.error("Failed to add item - no ID returned")
+                st.error("Failed to add item to plan")
+
+        except Exception as e:
+            logger.error(f"Error adding plan item: {str(e)}")
+            st.error(f"Error: {str(e)}")
+
+def parse_and_render_message(content: str, actionable_items: list):
+    """Parse message content and render with inline Add to Plan buttons"""
+    try:
+        # Create a mapping of item_id to item details
+        actionable_map = {str(item['id']): item for item in actionable_items}
+        logger.info(f"Starting to parse message with {len(actionable_items)} actionable items")
+
+        # Find all actionable items in the content
+        actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
+        matches = list(re.finditer(actionable_pattern, content))
+        logger.info(f"Found {len(matches)} actionable items in content")
+
+        last_end = 0
+        for match in matches:
+            # Render text before the actionable item
+            if match.start() > last_end:
+                pre_text = content[last_end:match.start()]
+                if pre_text.strip():
+                    st.markdown(pre_text)
+
+            # Process the actionable item
+            item_id = match.group(1)
+            text = match.group(2)
+
+            if item_id in actionable_map:
+                item = actionable_map[item_id]
+                logger.info(f"Processing actionable item {item_id}: {item}")
+
+                # Create container for the item
+                item_container = st.container()
+                with item_container:
+                    cols = st.columns([0.9, 0.1])
+                    with cols[0]:
+                        st.markdown(text)
+
+                    with cols[1]:
+                        button_key = f"add_plan_{item_id}"
+                        state_key = f"plan_item_{item_id}_added"
+
+                        # Initialize state if needed
+                        if state_key not in st.session_state:
+                            st.session_state[state_key] = False
+
+                        # Show add button or success message based on state
+                        if not st.session_state[state_key]:
+                            if st.button("Add", key=button_key, help="Add to your plan"):
+                                handle_plan_item_add(item_id, item)
+                        else:
+                            st.success("✅ Added!")
+
+            last_end = match.end()
+
+        # Render any remaining text
+        if last_end < len(content):
+            remaining = content[last_end:]
+            if remaining.strip():
+                st.markdown(remaining)
+
+    except Exception as e:
+        logger.error(f"Error in parse_and_render_message: {str(e)}")
+        st.error("Error displaying message")
+
 def generate_unique_key(prefix, item_id):
     """Generate a unique key for streamlit elements"""
     timestamp = int(time.time() * 1000)  # Get current time in milliseconds
@@ -84,69 +194,6 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
         logger.error(f"Error in add_to_plan: {str(e)}")
         return False, f"Error: {str(e)}"
 
-def parse_and_render_message(content: str, actionable_items: list):
-    """Parse message content and render with inline Add to Plan buttons"""
-    try:
-        # Create a mapping of item_id to item details
-        actionable_map = {str(item['id']): item for item in actionable_items}
-        logger.info(f"Starting to parse message with {len(actionable_items)} actionable items")
-
-        # Find all actionable items in the content
-        actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
-        matches = list(re.finditer(actionable_pattern, content))
-        logger.info(f"Found {len(matches)} actionable items in content")
-
-        last_end = 0
-        for match in matches:
-            # Render text before the actionable item
-            if match.start() > last_end:
-                pre_text = content[last_end:match.start()]
-                if pre_text.strip():
-                    st.markdown(pre_text)
-
-            # Process the actionable item
-            item_id = match.group(1)
-            text = match.group(2)
-
-            if item_id in actionable_map:
-                item = actionable_map[item_id]
-                logger.info(f"Processing actionable item {item_id}: {item}")
-
-                # Create container for the item
-                item_container = st.container()
-                with item_container:
-                    cols = st.columns([0.9, 0.1])
-                    with cols[0]:
-                        st.markdown(text)
-
-                    with cols[1]:
-                        key = f"add_btn_{item_id}_{int(time.time())}"
-                        logger.info(f"Creating button with key: {key}")
-                        if st.button("Add", key=key):
-                            logger.info(f"Add button clicked for item {item_id}")
-                            try:
-                                success, message = add_to_plan(item)
-                                if success:
-                                    logger.info("Successfully added item to plan")
-                                    st.success("✅ Added to plan!", icon="✅")
-                                else:
-                                    logger.error(f"Failed to add item: {message}")
-                                    st.error(f"Failed to add: {message}")
-                            except Exception as e:
-                                logger.error(f"Error handling add button click: {str(e)}")
-                                st.error(f"Error: {str(e)}")
-
-            last_end = match.end()
-
-        # Render any remaining text
-        if last_end < len(content):
-            remaining = content[last_end:]
-            if remaining.strip():
-                st.markdown(remaining)
-
-    except Exception as e:
-        logger.error(f"Error in parse_and_render_message: {str(e)}")
-        st.error("Error displaying message")
 
 @handle_error
 def render_chat():
