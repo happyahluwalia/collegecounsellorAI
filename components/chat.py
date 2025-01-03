@@ -51,7 +51,7 @@ def handle_plan_item_add(item_id: str, item: dict) -> None:
             if result and 'id' in result:
                 logger.info(f"Successfully added plan item with ID: {result['id']}")
                 st.session_state[state_key] = True
-                st.toast("✅ Added to plan!", icon="✅")
+                st.toast("✅ Added to plan!")
             else:
                 logger.error("Failed to add item - no ID returned")
                 st.error("Failed to add item to plan")
@@ -96,8 +96,8 @@ def parse_and_render_message(content: str, actionable_items: list):
                         st.markdown(text)
 
                     with cols[1]:
-                        # Use a stable key format that includes item_id and a fixed string
-                        button_key = f"add_btn_{item_id}"
+                        # Generate unique key using item's UUID if available, otherwise create a stable key
+                        button_key = item.get('uuid', f"add_btn_{item_id}_{int(time.time())}")
                         state_key = f"plan_item_{item_id}_added"
 
                         # Initialize state if needed
@@ -108,6 +108,7 @@ def parse_and_render_message(content: str, actionable_items: list):
                         if not st.session_state[state_key]:
                             if st.button("➕", key=button_key, help="Add to your plan"):
                                 handle_plan_item_add(item_id, item)
+                                st.rerun()  # Rerun to update UI after adding item
 
             last_end = match.end()
 
