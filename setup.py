@@ -5,6 +5,7 @@ import subprocess
 import time
 import toml
 from typing import Optional
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -24,17 +25,19 @@ class SetupManager:
     def check_database_config(self) -> bool:
         """Verify database configuration exists"""
         try:
-            if not os.path.exists('config/database.yaml'):
-                logger.info("Creating database.yaml from example...")
-                if os.path.exists('config/database.yaml.example'):
-                    with open('config/database.yaml.example', 'r') as example_file:
-                        with open('config/database.yaml', 'w') as config_file:
-                            config_file.write(example_file.read())
-                    logger.info("Database configuration created successfully")
-                    return True
-                else:
-                    logger.error("database.yaml.example not found")
-                    return False
+            # For local setup, check if .env exists
+            if self.environment == 'local':
+                if not os.path.exists('.env'):
+                    logger.info("Creating .env from template...")
+                    if os.path.exists('.env.example'):
+                        with open('.env.example', 'r') as example_file:
+                            with open('.env', 'w') as config_file:
+                                config_file.write(example_file.read())
+                        logger.info("Created .env file. Please update with your database credentials.")
+                        return True
+                    else:
+                        logger.error(".env.example not found")
+                        return False
             return True
         except Exception as e:
             logger.error(f"Error checking database config: {str(e)}")
@@ -62,6 +65,15 @@ class SetupManager:
         """Verify all required packages are installed"""
         try:
             logger.info("Verifying project dependencies...")
+
+            # Install toml first if not available
+            try:
+                import toml
+            except ImportError:
+                logger.info("Installing toml package...")
+                subprocess.check_call([
+                    sys.executable, "-m", "pip", "install", "toml"
+                ])
 
             # Read dependencies from pyproject.toml
             with open('pyproject.toml', 'r') as f:
@@ -111,8 +123,13 @@ address = "0.0.0.0"
 port = 5000
                     """.strip())
 
-            # Start the application using subprocess
-            subprocess.Popen([sys.executable, "-m", "streamlit", "run", "main.py"])
+            # Start the application
+            if self.environment == 'local':
+                logger.info("Starting Streamlit locally...")
+                subprocess.run([sys.executable, "-m", "streamlit", "run", "main.py"])
+            else:
+                subprocess.Popen([sys.executable, "-m", "streamlit", "run", "main.py"])
+
             logger.info("Application started successfully")
             return True
         except Exception as e:
