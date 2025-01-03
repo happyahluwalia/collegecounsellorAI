@@ -53,7 +53,7 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
 
         db = st.session_state.user.db
         user_id = st.session_state.user.id
-        logger.debug(f"User ID: {user_id}")
+        logger.debug(f"User ID: {user_id}, Database connection: {db}")
 
         # Validate required fields
         required_fields = ['text', 'category', 'year']
@@ -74,32 +74,60 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
             )
             logger.debug(f"SQL Parameters: {params}")
 
-            # Insert into plan_items table
-            result = db.execute(
-                """
-                INSERT INTO plan_items 
-                (user_id, activity_text, category, grade_year, url, status, metadata)
-                VALUES (%s, %s, %s, %s, %s, 'pending', %s)
-                RETURNING id
-                """,
-                params
-            )
+            # Start a transaction
+            db.execute("BEGIN")
 
-            inserted_id = result[0]['id'] if result else None
-            logger.info(f"Successfully added item to plan with ID: {inserted_id}")
+            try:
+                # Insert into plan_items table
+                result = db.execute(
+                    """
+                    INSERT INTO plan_items 
+                    (user_id, activity_text, category, grade_year, url, status, metadata)
+                    VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+                    RETURNING id;
+                    """,
+                    params,
+                    fetch_all=True  # Ensure we get the result
+                )
 
-            # Verify the insertion
-            verification = db.execute_one(
-                "SELECT id FROM plan_items WHERE id = %s",
-                (inserted_id,)
-            )
-            logger.info(f"Verification result: {verification}")
+                if not result:
+                    logger.error("No result returned from INSERT")
+                    db.execute("ROLLBACK")
+                    return False, "Failed to add item to plan: No ID returned"
 
-            return True, "Added to plan successfully!"
+                inserted_id = result[0]['id']
+                logger.info(f"Successfully added item to plan with ID: {inserted_id}")
 
-        except Exception as db_error:
-            logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
-            return False, "Database error: Failed to add item to plan"
+                # Verify the insertion
+                verification = db.execute(
+                    """
+                    SELECT id, activity_text, category, grade_year 
+                    FROM plan_items 
+                    WHERE id = %s
+                    """,
+                    (inserted_id,),
+                    fetch_all=True
+                )
+
+                if not verification:
+                    logger.error("Verification failed - inserted row not found")
+                    db.execute("ROLLBACK")
+                    return False, "Failed to verify item insertion"
+
+                logger.info(f"Verification result: {verification}")
+
+                # Commit the transaction
+                db.execute("COMMIT")
+                return True, "Added to plan successfully!"
+
+            except Exception as db_error:
+                db.execute("ROLLBACK")
+                logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
+                return False, f"Database error: {str(db_error)}"
+
+        except Exception as transaction_error:
+            logger.error(f"Transaction error: {str(transaction_error)}\n{traceback.format_exc()}")
+            return False, f"Transaction error: {str(transaction_error)}"
 
     except Exception as e:
         logger.error(f"Error in add_to_plan: {str(e)}\n{traceback.format_exc()}")
