@@ -20,8 +20,33 @@ class ActionableItem:
         self.item_id = item_id
         self.text = text
         self.category = category
-        self.year = year
+        self.year = self._normalize_year_format(year)
         self.url = url
+
+    def _normalize_year_format(self, year: str) -> str:
+        """Normalize year format to comma-separated numbers (e.g., '10,11,12')"""
+        try:
+            # Remove quotes and spaces
+            year = year.replace('"', '').replace("'", "").strip()
+
+            # Split on comma and clean each grade
+            grades = []
+            for grade in year.split(','):
+                grade = grade.strip().lower()
+                # Extract number from grade (e.g., "11th" -> "11")
+                if 'th' in grade:
+                    number = grade.replace('th', '').strip()
+                    if number.isdigit():
+                        grades.append(number)
+                elif grade.isdigit():
+                    grades.append(grade)
+
+            # Join with commas, no spaces
+            return ','.join(grades) if grades else '9,10,11,12'  # Default if parsing fails
+
+        except Exception as e:
+            logger.error(f"Error normalizing year format: {str(e)}")
+            return '9,10,11,12'  # Default to all high school years
 
     def to_dict(self) -> Dict:
         return {

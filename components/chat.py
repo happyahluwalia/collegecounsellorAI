@@ -90,44 +90,49 @@ def parse_and_render_message(content: str, actionable_items: list):
         actionable_map = {str(item['id']): item for item in actionable_items}
         logger.info(f"Starting to parse message with {len(actionable_items)} actionable items")
 
-        # Find all actionable items first
-        actionable_matches = re.findall(r'<actionable id="([^"]+)">(.*?)</actionable>', content, flags=re.DOTALL)
-        logger.info(f"Found {len(actionable_matches)} actionable items in content")
+        # Split content into chunks, preserving order
+        chunks = re.split(r'(<actionable id="[^"]+">.*?</actionable>)', content, flags=re.DOTALL)
 
-        # Process each actionable item
-        for item_id, text in actionable_matches:
-            if item_id in actionable_map:
-                item = actionable_map[item_id]
-                logger.info(f"Processing actionable item {item_id}: {item}")
+        # Process each chunk in order
+        for chunk in chunks:
+            # Check if chunk is an actionable item
+            actionable_match = re.match(r'<actionable id="([^"]+)">(.*?)</actionable>', chunk, re.DOTALL)
 
-                # Create container for the item
-                item_container = st.container()
-                with item_container:
-                    cols = st.columns([0.9, 0.1])
-                    with cols[0]:
-                        st.markdown(text)
+            if actionable_match:
+                item_id = actionable_match.group(1)
+                text = actionable_match.group(2).strip()
 
-                    with cols[1]:
-                        # Use simple button key based on item_id
-                        button_key = f"add_btn_{item_id}"
-                        state_key = f"plan_item_{item_id}_added"
+                if item_id in actionable_map:
+                    item = actionable_map[item_id]
+                    logger.info(f"Processing actionable item {item_id}: {item}")
 
-                        # Initialize state if needed
-                        if state_key not in st.session_state:
-                            st.session_state[state_key] = False
+                    # Create container for the item
+                    item_container = st.container()
+                    with item_container:
+                        cols = st.columns([0.9, 0.1])
+                        with cols[0]:
+                            st.markdown(text)
 
-                        # Show add button or checkmark based on state
-                        if not st.session_state[state_key]:
-                            if st.button("➕", key=button_key, help="Add to your plan"):
-                                handle_plan_item_add(item_id, item)
-                                st.rerun()
+                        with cols[1]:
+                            # Use simple button key based on item_id
+                            button_key = f"add_btn_{item_id}"
+                            state_key = f"plan_item_{item_id}_added"
+
+                            # Initialize state if needed
+                            if state_key not in st.session_state:
+                                st.session_state[state_key] = False
+
+                            # Show add button or checkmark based on state
+                            if not st.session_state[state_key]:
+                                if st.button("➕", key=button_key, help="Add to your plan"):
+                                    handle_plan_item_add(item_id, item)
+                                    st.rerun()
+                else:
+                    logger.warning(f"No metadata found for actionable item {item_id}")
             else:
-                logger.warning(f"No metadata found for actionable item {item_id}")
-
-        # Find and render regular text content
-        regular_text = re.sub(r'<actionable id="[^"]+">.*?</actionable>', '', content, flags=re.DOTALL)
-        if regular_text.strip():
-            st.markdown(regular_text)
+                # Regular text chunk
+                if chunk.strip():
+                    st.markdown(chunk)
 
     except Exception as e:
         logger.error(f"Error in parse_and_render_message: {str(e)}\n{traceback.format_exc()}")
