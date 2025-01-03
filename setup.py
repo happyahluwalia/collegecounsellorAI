@@ -45,9 +45,9 @@ class SetupManager:
         try:
             logger.info("Setting up database...")
 
-            # Import college data
-            import data.import.college_data_importer
-            importer = data.import.college_data_importer.CollegeDataImporter(
+            # Import college data using the restructured import
+            from data.importers.college_data_importer import CollegeDataImporter
+            importer = CollegeDataImporter(
                 os.path.join('data', 'All_college_export.csv')
             )
             importer.import_all()
