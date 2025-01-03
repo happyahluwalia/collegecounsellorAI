@@ -6,11 +6,12 @@ import os
 def render_hero_section():
     """Render the hero section with Coco's avatar and main message"""
     col1, col2, col3 = st.columns([1, 2, 1])
-    
+
     with col2:
         # Center the avatar
-        st.image("images/Coco.webp", use_column_width=True)
-        
+        image_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "images", "Coco.webp")
+        st.image(image_path, use_container_width=True)
+
         # Main headline
         st.markdown(
             """
@@ -19,7 +20,7 @@ def render_hero_section():
             """,
             unsafe_allow_html=True
         )
-        
+
         # Value proposition
         st.markdown(
             """
@@ -31,7 +32,7 @@ def render_hero_section():
             """,
             unsafe_allow_html=True
         )
-        
+
         # Chat button
         if st.button(
             "Chat with Coco Now!",
@@ -57,7 +58,7 @@ def render_navigation():
         "Resources": "resources",
         "About": "about"
     }
-    
+
     with st.sidebar:
         st.markdown("### Navigation")
         for label, page in menu_items.items():
@@ -97,13 +98,13 @@ def render_home():
         """,
         unsafe_allow_html=True
     )
-    
+
     # Show demo mode indicator if needed
     render_demo_mode_indicator()
-    
+
     # Render main sections
     render_hero_section()
-    
+
     # Navigation in sidebar
     render_navigation()
 
