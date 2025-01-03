@@ -31,47 +31,56 @@ def init_chat():
     if 'current_session_id' not in st.session_state:
         st.session_state.current_session_id = None
 
+@handle_error
 def add_to_plan(actionable_item):
     """Add an actionable item to the student's plan"""
     try:
         if not hasattr(st.session_state, 'user'):
             st.warning("Please log in to add items to your plan")
-            return
+            return False
 
         db = st.session_state.user.db
         user_id = st.session_state.user.id
 
         # Add to plan table with enhanced schema
-        db.execute(
-            """
-            INSERT INTO plan_items 
-            (user_id, activity_text, category, grade_year, url, status, metadata)
-            VALUES (%s, %s, %s, %s, %s, 'pending', %s)
-            """,
-            (
-                user_id, 
-                actionable_item["text"], 
-                actionable_item["category"],
-                actionable_item["year"],
-                actionable_item.get("url"),
-                json.dumps({"source": "chat_recommendation"})
+        try:
+            db.execute(
+                """
+                INSERT INTO plan_items 
+                (user_id, activity_text, category, grade_year, url, status, metadata)
+                VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+                """,
+                (
+                    user_id, 
+                    actionable_item["text"], 
+                    actionable_item["category"],
+                    actionable_item["year"],
+                    actionable_item.get("url"),
+                    json.dumps({"source": "chat_recommendation"})
+                )
             )
-        )
-        st.success(f"Added to your plan! 🎯")
-        logger.info(f"Added actionable item to plan for user {user_id}")
+            st.success(f"Added to your plan! 🎯")
+            logger.info(f"Added actionable item to plan for user {user_id}")
+            return True
+        except Exception as db_error:
+            logger.error(f"Database error adding item to plan: {str(db_error)}")
+            st.error("Failed to add item to your plan. Please try again.")
+            return False
+
     except Exception as e:
         logger.error(f"Failed to add item to plan: {str(e)}")
         st.error("Failed to add item to your plan. Please try again.")
+        return False
 
 def parse_and_render_message(content: str, actionable_items: list):
-    """Parse message content and render with inline Add to Plan buttons"""
+    """Parse message content and render with inline Add to Plan links"""
     # Create a mapping of item_id to item details
     actionable_map = {str(item['id']): item for item in actionable_items}
 
     # Split the content into paragraphs
     paragraphs = content.split('\n\n')
 
-    for paragraph in paragraphs:
+    for p_idx, paragraph in enumerate(paragraphs):
         # Check if this paragraph contains any actionable items
         actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
         matches = list(re.finditer(actionable_pattern, paragraph))
@@ -79,7 +88,7 @@ def parse_and_render_message(content: str, actionable_items: list):
         if matches:
             # If paragraph contains actionable items, process them
             last_end = 0
-            for match in matches:
+            for match_idx, match in enumerate(matches):
                 # Print text before the actionable item
                 if match.start() > last_end:
                     st.markdown(paragraph[last_end:match.start()])
@@ -89,12 +98,18 @@ def parse_and_render_message(content: str, actionable_items: list):
                 text = match.group(2)
 
                 if item_id in actionable_map:
-                    col1, col2 = st.columns([4, 1])
-                    with col1:
-                        st.markdown(text)
-                    with col2:
-                        if st.button("➕ Add to Plan", key=f"add_plan_{item_id}", type="primary"):
-                            add_to_plan(actionable_map[item_id])
+                    # Generate a unique key for this specific actionable item
+                    unique_key = f"add_plan_{p_idx}_{match_idx}_{item_id}"
+
+                    # Render the text and add a simple link after it
+                    st.markdown(f"{text} [➕ Add to Plan](?action=add_plan&id={unique_key})")
+
+                    # Handle the add to plan action
+                    query_params = st.experimental_get_query_params()
+                    if query_params.get("action") == ["add_plan"] and query_params.get("id") == [unique_key]:
+                        add_to_plan(actionable_map[item_id])
+                        # Clear the query parameters
+                        st.experimental_set_query_params()
 
                 last_end = match.end()
 
@@ -219,6 +234,7 @@ def render_chat():
         st.session_state.error_details = error_trace
         st.rerun()
 
+# Helper functions for chat management
 @handle_error
 def new_chat_session():
     """Start a new chat session."""
