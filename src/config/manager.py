@@ -8,6 +8,9 @@ from typing import Optional, Dict, Any, Union
 import yaml
 import os
 from pydantic import BaseModel, Field
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ModelConfig(BaseModel):
     """Configuration model for LLM agents"""
@@ -26,17 +29,28 @@ class ConfigManager:
         self.env = os.getenv("APP_ENV", "development")
         self._config = self._load_config()
         self._prompts = self._load_prompts()
+        logger.info("ConfigManager initialized with prompts: %s", self._prompts)
 
     def _load_config(self) -> Dict[str, Any]:
         """Load the main configuration file"""
-        with open(self.config_dir / "models.yaml") as f:
-            config = yaml.safe_load(f)
-        return self._resolve_env_vars(config["environments"][self.env])
+        try:
+            with open(self.config_dir / "models.yaml") as f:
+                config = yaml.safe_load(f)
+            return self._resolve_env_vars(config["environments"][self.env])
+        except Exception as e:
+            logger.error(f"Error loading config: {str(e)}")
+            return {}
 
     def _load_prompts(self) -> Dict[str, Any]:
         """Load the prompts configuration file"""
-        with open(self.config_dir / "prompts.yaml") as f:
-            return yaml.safe_load(f)
+        try:
+            with open(self.config_dir / "prompts.yaml") as f:
+                prompts = yaml.safe_load(f)
+                logger.info(f"Loaded prompts from YAML: {prompts}")
+                return prompts
+        except Exception as e:
+            logger.error(f"Error loading prompts: {str(e)}")
+            return {}
 
     def _resolve_env_vars(self, config: Union[str, Dict, list, Any]) -> Union[str, Dict, list, Any]:
         """Resolve environment variables in config values"""
@@ -62,4 +76,8 @@ class ConfigManager:
 
     def get_prompt_template(self, template_name: str) -> str:
         """Get prompt template by name"""
-        return self._prompts["templates"].get(template_name, {}).get("base_prompt", "")
+        templates = self._prompts.get('templates', {})
+        template = templates.get(template_name, {})
+        base_prompt = template.get('base_prompt', '')
+        logger.info(f"Retrieved template for {template_name}: {base_prompt}")
+        return base_prompt

@@ -45,13 +45,13 @@ class PrimaryCounselorAgent(BaseAgent):
         try:
             if hasattr(self, 'config_manager') and self.config_manager:
                 logger.info(f"Loading template for agent type: {self.agent_type}")
-                templates = self.config_manager.get_templates()
-                if not templates:
-                    logger.error("No templates found in config manager")
+                if not hasattr(self.config_manager, '_prompts') or not self.config_manager._prompts:
+                    logger.error("No prompts found in config manager")
                     return self._get_default_config()
 
+                templates = self.config_manager._prompts.get('templates', {})
                 template = templates.get(self.agent_type, {})
-                logger.info(f"Found template: {template}")
+                logger.info(f"Found template for {self.agent_type}: {template}")
 
                 if not template or 'base_prompt' not in template:
                     logger.error(f"No valid template found for {self.agent_type}")
@@ -62,13 +62,13 @@ class PrimaryCounselorAgent(BaseAgent):
                     'model_name': 'gpt-4-turbo-preview',
                     'temperature': 0.7,
                     'max_tokens': 2000,
-                    'system_prompt_template': template.get('base_prompt', ''),
+                    'system_prompt_template': template['base_prompt'],
                     'fallback': {
                         'provider': 'anthropic',
                         'model_name': 'claude-3-sonnet'
                     }
                 }
-                logger.info(f"Loaded config with system prompt: {config['system_prompt_template'][:100]}...")
+                logger.info(f"Loaded config with system prompt: {config['system_prompt_template']}")
                 return config
             return self._get_default_config()
         except Exception as e:
@@ -185,25 +185,6 @@ class PrimaryCounselorAgent(BaseAgent):
         try:
             # Get template from config
             template = self.config.get('system_prompt_template', '')
-            if not template:
-                logger.warning("No system prompt template found in config, using default")
-                template = """You are a college admissions counselor. Provide guidance and advice to students.
-
-                When providing recommendations, use the following format for actionable items:
-
-                <actionable id="1">Specific action or recommendation here</actionable>
-
-                At the end of your response, include:
-
-                [system]
-                actionable:
-                [1]
-                category: [Category]
-                year: [Grade Level]
-                url: [Optional URL]
-                [/system]
-                """
-
             logger.info(f"Using system prompt template (full): {template}")
             messages = [
                 {
