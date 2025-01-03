@@ -114,67 +114,98 @@ def parse_and_render_message(content: str, actionable_items: list):
         # Create a mapping of item_id to item details
         actionable_map = {str(item['id']): item for item in actionable_items}
         logger.info(f"Processing message with {len(actionable_items)} actionable items")
-        logger.debug(f"Actionable items: {json.dumps(actionable_items, indent=2)}")
+        logger.debug(f"Actionable items map: {json.dumps(actionable_map, indent=2)}")
+        logger.debug(f"Content to parse: {content}")
 
-        # Split content into sections
-        sections = re.split(r'(\n\n|\n(?=\d+\.))', content)
+        try:
+            # First attempt to render the entire content as markdown
+            if not isinstance(content, str):
+                logger.error(f"Content is not a string: {type(content)}")
+                st.error("Invalid content format")
+                return
 
-        for section in sections:
-            if not section.strip():
-                continue
+            # Split content into sections, preserving formatting
+            sections = content.split('\n\n')
+            logger.info(f"Split content into {len(sections)} sections")
 
-            # Check for actionable items
-            actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
-            matches = list(re.finditer(actionable_pattern, section))
+            for section_idx, section in enumerate(sections):
+                try:
+                    if not section.strip():
+                        continue
 
-            if matches:
-                last_end = 0
-                for match in matches:
-                    # Print text before actionable item
-                    if match.start() > last_end:
-                        st.markdown(section[last_end:match.start()])
+                    logger.debug(f"Processing section {section_idx}: {section[:100]}...")
 
-                    item_id = match.group(1)
-                    text = match.group(2)
+                    # Check for actionable items
+                    actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
+                    matches = list(re.finditer(actionable_pattern, section))
+                    logger.debug(f"Found {len(matches)} actionable items in section {section_idx}")
 
-                    if item_id in actionable_map:
-                        item = actionable_map[item_id]
-                        logger.info(f"Found item in map: {json.dumps(item, indent=2)}")
+                    if matches:
+                        last_end = 0
+                        for match in matches:
+                            # Print text before actionable item
+                            if match.start() > last_end:
+                                pre_text = section[last_end:match.start()]
+                                if pre_text.strip():
+                                    st.markdown(pre_text)
 
-                        cols = st.columns([0.92, 0.08])
-                        with cols[0]:
-                            st.markdown(text)
+                            item_id = match.group(1)
+                            text = match.group(2)
 
-                        with cols[1]:
-                            # Create unique session state key for this button
-                            button_key = f"add_button_{item_id}"
-                            if button_key not in st.session_state:
-                                st.session_state[button_key] = False
+                            if item_id in actionable_map:
+                                item = actionable_map[item_id]
+                                logger.debug(f"Rendering actionable item {item_id}")
 
-                            # Use the button_key as both the key and session state key
-                            if st.button("➕ Add", key=button_key, help="Add this item to your plan"):
-                                logger.info(f"Button clicked for item {item_id}")
-                                if not st.session_state[button_key]:  # Prevent double execution
-                                    st.session_state[button_key] = True
-                                    success, message = add_to_plan(item)
-                                    if success:
-                                        st.toast("✅ Added to plan!", icon="✅")
-                                        logger.info(f"Successfully added item {item_id} to plan")
-                                    else:
-                                        st.warning(message)
-                                        logger.error(f"Failed to add item {item_id}: {message}")
-                                        st.session_state[button_key] = False  # Reset on failure
+                                cols = st.columns([0.92, 0.08])
+                                with cols[0]:
+                                    st.markdown(text)
 
-                    last_end = match.end()
+                                with cols[1]:
+                                    button_key = f"add_button_{item_id}"
+                                    if button_key not in st.session_state:
+                                        st.session_state[button_key] = False
 
-                if last_end < len(section):
-                    st.markdown(section[last_end:])
-            else:
-                st.markdown(section)
+                                    if st.button("➕ Add", key=button_key, help="Add this item to your plan"):
+                                        logger.info(f"Button clicked for item {item_id}")
+                                        if not st.session_state[button_key]:
+                                            st.session_state[button_key] = True
+                                            success, message = add_to_plan(item)
+                                            if success:
+                                                st.toast("✅ Added to plan!", icon="✅")
+                                                logger.info(f"Successfully added item {item_id}")
+                                            else:
+                                                st.warning(message)
+                                                logger.error(f"Failed to add item {item_id}: {message}")
+                                                st.session_state[button_key] = False
+                            else:
+                                logger.warning(f"Item {item_id} not found in actionable_map")
+                                st.markdown(text)
+
+                            last_end = match.end()
+
+                        # Print remaining text
+                        if last_end < len(section):
+                            remaining = section[last_end:]
+                            if remaining.strip():
+                                st.markdown(remaining)
+                    else:
+                        st.markdown(section)
+
+                except Exception as section_error:
+                    logger.error(f"Error processing section {section_idx}: {str(section_error)}\n{traceback.format_exc()}")
+                    st.warning(f"Error displaying section {section_idx + 1}")
+                    continue
+
+        except Exception as parsing_error:
+            logger.error(f"Error parsing content: {str(parsing_error)}\n{traceback.format_exc()}")
+            st.error("Error parsing message content")
+            return
 
     except Exception as e:
-        logger.error(f"Error in parse_and_render_message: {str(e)}\n{traceback.format_exc()}")
-        st.error("Error displaying message content")
+        logger.error(f"Fatal error in parse_and_render_message: {str(e)}\n{traceback.format_exc()}")
+        st.error("Error displaying message")
+        if st.checkbox("Show Error Details"):
+            st.code(traceback.format_exc())
 
 @handle_error
 def render_chat():
