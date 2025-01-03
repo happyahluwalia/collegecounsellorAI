@@ -88,23 +88,28 @@ def parse_and_render_message(content: str, actionable_items: list):
         actionable_map = {str(item['id']): item for item in actionable_items}
         logger.info(f"Processing message with {len(actionable_items)} actionable items")
         logger.debug(f"Actionable items: {json.dumps(actionable_items, indent=2)}")
+        logger.debug(f"Raw content: {content}")
 
-        # Split content into paragraphs
-        paragraphs = content.split('\n\n')
+        # Split content into sections while preserving list formatting
+        sections = re.split(r'(\n\n|\n(?=\d+\.))', content)
+        logger.debug(f"Split content into {len(sections)} sections")
 
-        for p_idx, paragraph in enumerate(paragraphs):
+        for p_idx, section in enumerate(sections):
+            if not section.strip():  # Skip empty sections
+                continue
+
             # Check for actionable items
             actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
-            matches = list(re.finditer(actionable_pattern, paragraph))
-            logger.debug(f"Found {len(matches)} actionable items in paragraph {p_idx}")
+            matches = list(re.finditer(actionable_pattern, section))
+            logger.debug(f"Found {len(matches)} actionable items in section {p_idx}")
 
             if matches:
-                # Process paragraph with actionable items
+                # Process section with actionable items
                 last_end = 0
                 for match in matches:
                     # Print text before actionable item
                     if match.start() > last_end:
-                        st.markdown(paragraph[last_end:match.start()])
+                        st.markdown(section[last_end:match.start()])
 
                     # Get actionable item details
                     item_id = match.group(1)
@@ -136,14 +141,15 @@ def parse_and_render_message(content: str, actionable_items: list):
                     last_end = match.end()
 
                 # Print remaining text
-                if last_end < len(paragraph):
-                    st.markdown(paragraph[last_end:])
+                if last_end < len(section):
+                    st.markdown(section[last_end:])
             else:
-                # No actionable items, print whole paragraph
-                st.markdown(paragraph)
+                # No actionable items, print whole section
+                st.markdown(section)
 
     except Exception as e:
-        logger.error(f"Error parsing message: {str(e)}\n{traceback.format_exc()}")
+        error_trace = traceback.format_exc()
+        logger.error(f"Error parsing message: {str(e)}\n{error_trace}")
         st.error("Error displaying message content")
 
 @handle_error
