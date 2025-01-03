@@ -1,0 +1,56 @@
+
+### 1. National History Academy Summer Program
+- **Description**: This program allows high school students to explore American history through field trips to iconic historical sites, engaging discussions, and project-based learning. It's a unique chance to live and learn history where it happened.
+- **Website**: [National History Academy Summer Program](https://www.historycamp.com)
+
+<actionable id="4f8c1e6e-3487-4f71-bf00-af4ea6ab0c45">Apply to the National History Academy Summer Program to experience American history through immersive field trips and discussions.</actionable>
+
+### 2. Telluride Association Summer Program (TASP) 
+- **Description**: TASP offers a six-week educational experience for high school juniors focused on critical thinking and intellectual inquiry. While not exclusively historical, many seminars delve deeply into historical themes and periods, led by college and university faculty.
+- **Website**: [Telluride Association Summer Program (TASP)](https://www.tellurideassociation.org/our-programs/high-school-students/summer-program-juniors-tasp/)
+
+<actionable id="ab5d4d5c-5b1c-45d5-8e73-af5e9a2a5e5d">Consider the Telluride Association Summer Program for an intellectually stimulating experience that includes deep historical inquiry.</actionable>
+
+### 3. Stanford University Pre-Collegiate Summer Institutes
+- **Description**: Stanford's summer programs include courses for students interested in history. These range from specific periods and regions to themes such as warfare, diplomacy, and cultural history, taught by Stanford faculty and scholars.
+- **Website**: [Stanford Pre-Collegiate Summer Institutes](https://spcs.stanford.edu/programs)
+
+<actionable id="d4741f0e-8a5e-42d5-828c-9a9a05b6a7f5">Explore Stanford University Pre-Collegiate Summer Institutes for courses in various historical themes and periods.</actionable>
+
+### 4. Oxbridge Academic Programs
+- **Description**: Oxbridge offers summer study programs in Oxford, Cambridge, Paris, and other locations, with a variety of history courses available. These range from the history of art and architecture to political history and beyond, taught in historic locations.
+- **Website**: [Oxbridge Academic Programs](https://www.oxbridgeprograms.com)
+
+<actionable id="2b6eae70-0b4c-4a84-9c06-1b1f9c7b4d7d">Join Oxbridge Academic Programs to study history in some of the world's most historic cities.</actionable>
+
+### 5. Harvard Summer School
+- **Description**: Harvard offers a variety of history courses for high school students during its summer session. These courses cover a wide range of topics and time periods, from ancient civilizations to modern history.
+- **Website**: [Harvard Summer School](https://summer.harvard.edu/high-school-programs)
+
+<actionable id="09b2cd5d-0d0a-4b02-a1e1-2a8b0c8f798d">Apply to Harvard Summer School to take in-depth history courses taught by Harvard faculty.</actionable>
+
+Participating in these summer programs can significantly deepen your knowledge of history, allowing you to explore your interests in ways that go beyond what is possible in a standard high school curriculum. They also provide a platform to showcase your passion for history in your college applications. Be sure to review each program's application deadlines, requirements, and any associated costs.
+
+[system]
+actionable:
+[1]
+category: Summer Programs
+year: "10th, 11th"
+url: https://www.historycamp.com
+[2]
+category: Summer Programs
+year: "11th"
+url: https://www.tellurideassociation.org/our-programs/high-school-students/summer-program-juniors-tasp/
+[3]
+category: Summer Programs
+year: "9th, 10th, 11th"
+url: https://spcs.stanford.edu/programs
+[4]
+category: Summer Programs
+year: "9th, 10th, 11th, 12th"
+url: https://www.oxbridgeprograms.com
+[5]
+category: Summer Programs
+year: "10th, 11th, 12th"
+url: https://summer.harvard.edu/high-school-programs
+[/system]

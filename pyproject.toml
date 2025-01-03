@@ -20,4 +20,5 @@ dependencies = [
     "pyyaml>=6.0.2",
     "pydantic>=2.10.4",
     "anthropic>=0.42.0",
+    "pytest>=8.3.4",
 ]
