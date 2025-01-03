@@ -42,16 +42,18 @@ def init_chat():
         st.session_state.current_session_id = None
 
 @handle_error
-def add_to_plan(actionable_item):
+def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
     """Add an actionable item to the student's plan"""
     try:
         if not hasattr(st.session_state, 'user'):
+            logger.warning("User not logged in, cannot add to plan")
             return False, "Please log in to add items to your plan"
 
         logger.info(f"Adding item to plan: {actionable_item}")
 
         db = st.session_state.user.db
         user_id = st.session_state.user.id
+        logger.debug(f"User ID: {user_id}")
 
         # Validate required fields
         required_fields = ['text', 'category', 'year']
@@ -61,6 +63,17 @@ def add_to_plan(actionable_item):
                 return False, f"Missing required field: {field}"
 
         try:
+            # Debug log the SQL parameters
+            params = (
+                user_id,
+                actionable_item["text"],
+                actionable_item["category"],
+                actionable_item["year"],
+                actionable_item.get("url"),
+                json.dumps({"source": "chat_recommendation"})
+            )
+            logger.debug(f"SQL Parameters: {params}")
+
             # Insert into plan_items table
             result = db.execute(
                 """
@@ -69,17 +82,19 @@ def add_to_plan(actionable_item):
                 VALUES (%s, %s, %s, %s, %s, 'pending', %s)
                 RETURNING id
                 """,
-                (
-                    user_id,
-                    actionable_item["text"],
-                    actionable_item["category"],
-                    actionable_item["year"],
-                    actionable_item.get("url"),
-                    json.dumps({"source": "chat_recommendation"})
-                )
+                params
             )
 
-            logger.info("Successfully added item to plan")
+            inserted_id = result[0]['id'] if result else None
+            logger.info(f"Successfully added item to plan with ID: {inserted_id}")
+
+            # Verify the insertion
+            verification = db.execute_one(
+                "SELECT id FROM plan_items WHERE id = %s",
+                (inserted_id,)
+            )
+            logger.info(f"Verification result: {verification}")
+
             return True, "Added to plan successfully!"
 
         except Exception as db_error:
@@ -161,55 +176,6 @@ def parse_and_render_message(content: str, actionable_items: list):
         st.error("Error displaying message content")
         if st.checkbox("Show Error Details"):
             st.code(error_trace)
-
-@handle_error
-def add_to_plan(actionable_item):
-    """Add an actionable item to the student's plan"""
-    try:
-        if not hasattr(st.session_state, 'user'):
-            return False, "Please log in to add items to your plan"
-
-        logger.info(f"Adding item to plan: {actionable_item}")
-
-        db = st.session_state.user.db
-        user_id = st.session_state.user.id
-
-        # Validate required fields
-        required_fields = ['text', 'category', 'year']
-        for field in required_fields:
-            if field not in actionable_item:
-                logger.error(f"Missing required field: {field}")
-                return False, f"Missing required field: {field}"
-
-        try:
-            # Insert into plan_items table
-            result = db.execute(
-                """
-                INSERT INTO plan_items 
-                (user_id, activity_text, category, grade_year, url, status, metadata)
-                VALUES (%s, %s, %s, %s, %s, 'pending', %s)
-                RETURNING id
-                """,
-                (
-                    user_id,
-                    actionable_item["text"],
-                    actionable_item["category"],
-                    actionable_item["year"],
-                    actionable_item.get("url"),
-                    json.dumps({"source": "chat_recommendation"})
-                )
-            )
-
-            logger.info("Successfully added item to plan")
-            return True, "Added to plan successfully!"
-
-        except Exception as db_error:
-            logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
-            return False, "Database error: Failed to add item to plan"
-
-    except Exception as e:
-        logger.error(f"Error in add_to_plan: {str(e)}\n{traceback.format_exc()}")
-        return False, str(e)
 
 @handle_error
 def render_chat():
