@@ -117,24 +117,21 @@ def parse_and_render_message(content: str, actionable_items: list):
 
                     if item_id in actionable_map:
                         item = actionable_map[item_id]
-                        # Create unique key for this item
-                        unique_key = f"plan_{p_idx}_{item_id}"
 
-                        # Create two columns with adjusted ratio for better layout
-                        col1, col2 = st.columns([0.85, 0.15])
-                        with col1:
-                            st.markdown(text)
-                        with col2:
-                            try:
-                                st.markdown("➕")  # Icon on first line
-                                if st.link_button("Add to plan", help="Add this item to your plan"):
-                                    success, message = add_to_plan(item)
-                                    if success:
-                                        st.toast("✅ Added to plan!", icon="✅")
-                                    else:
-                                        st.warning(message)
-                            except Exception as button_error:
-                                logger.error(f"Error with add to plan button: {str(button_error)}")
+                        # Display the text and Add to Plan link in the same line
+                        st.write(
+                            f"{text} "  # Text content
+                            f"<span style='white-space: nowrap;'>"  # Keep + and text together
+                            f"[➕ Add to my plan](#)",  # The link (styled as one unit)
+                            unsafe_allow_html=True
+                        )
+
+                        if st.link_button("", help="Add this item to your plan"):
+                            success, message = add_to_plan(item)
+                            if success:
+                                st.toast("✅ Added to plan!", icon="✅")
+                            else:
+                                st.warning(message)
 
                     last_end = match.end()
 
