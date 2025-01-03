@@ -129,7 +129,8 @@ def parse_and_render_message(content: str, actionable_items: list):
                             # Use a container for better alignment
                             with st.container():
                                 try:
-                                    if st.button("➕ Add to plan", key=unique_key, help="Add this item to your plan"):
+                                    st.markdown("➕")  # Icon on first line
+                                    if st.button("Add to Plan", key=unique_key, help="Add this item to your plan"):
                                         success = add_to_plan(item)
                                         if success:
                                             st.toast("✅ Added to plan!", icon="✅")
