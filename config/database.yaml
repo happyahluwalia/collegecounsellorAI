@@ -1,0 +1,29 @@
+# Database Configuration
+# This file contains database connection settings for different environments
+
+# Default configuration (used as fallback)
+default:
+  host: localhost
+  port: 5432
+  database: college_compass
+  user: postgres
+  password: postgres
+
+# Local development environment
+local:
+  host: localhost
+  port: 5432
+  database: college_compass
+  user: postgres
+  password: postgres
+
+# Replit environment (uses environment variables)
+replit:
+  use_env_vars: true
+  # These settings are only used if environment variables are missing
+  fallback:
+    host: ${PGHOST}
+    port: ${PGPORT}
+    database: ${PGDATABASE}
+    user: ${PGUSER}
+    password: ${PGPASSWORD}

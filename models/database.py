@@ -4,6 +4,7 @@ import logging
 import time
 from psycopg2.extras import RealDictCursor
 from utils.error_handling import DatabaseError, log_error
+from utils.config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +24,18 @@ class Database:
         retry_count = 0
         while retry_count < self.MAX_RETRIES:
             try:
+                # Get configuration from ConfigManager
+                config = ConfigManager.get_instance().get_database_config()
+
+                if not config:
+                    raise DatabaseError("No database configuration available")
+
                 self.conn = psycopg2.connect(
-                    host=os.environ['PGHOST'],
-                    database=os.environ['PGDATABASE'],
-                    user=os.environ['PGUSER'],
-                    password=os.environ['PGPASSWORD'],
-                    port=os.environ['PGPORT']
+                    host=config['host'],
+                    port=config['port'],
+                    database=config['database'],
+                    user=config['user'],
+                    password=config['password']
                 )
                 logger.info("Database connection established successfully")
                 self.create_tables()
