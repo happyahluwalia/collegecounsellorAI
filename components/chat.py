@@ -44,15 +44,16 @@ def add_to_plan(actionable_item):
         db = st.session_state.user.db
         user_id = st.session_state.user.id
 
-        # Add to plan table with enhanced schema
-        try:
-            # Log the values being inserted
-            logger.info(f"Inserting plan item - User ID: {user_id}, "
-                       f"Text: {actionable_item['text'][:50]}..., "
-                       f"Category: {actionable_item['category']}, "
-                       f"Year: {actionable_item['year']}")
+        # Validate required fields
+        required_fields = ['text', 'category', 'year']
+        for field in required_fields:
+            if field not in actionable_item:
+                logger.error(f"Missing required field: {field}")
+                return False
 
-            db.execute(
+        try:
+            # Insert into plan_items table
+            result = db.execute(
                 """
                 INSERT INTO plan_items 
                 (user_id, activity_text, category, grade_year, url, status, metadata)
@@ -60,8 +61,8 @@ def add_to_plan(actionable_item):
                 RETURNING id
                 """,
                 (
-                    user_id, 
-                    actionable_item["text"], 
+                    user_id,
+                    actionable_item["text"],
                     actionable_item["category"],
                     actionable_item["year"],
                     actionable_item.get("url"),
@@ -74,12 +75,10 @@ def add_to_plan(actionable_item):
 
         except Exception as db_error:
             logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
-            st.error("Failed to add item to your plan. Please try again.")
             return False
 
     except Exception as e:
         logger.error(f"Error in add_to_plan: {str(e)}\n{traceback.format_exc()}")
-        st.error("Failed to add item to your plan. Please try again.")
         return False
 
 def parse_and_render_message(content: str, actionable_items: list):
@@ -87,54 +86,50 @@ def parse_and_render_message(content: str, actionable_items: list):
     try:
         # Create a mapping of item_id to item details
         actionable_map = {str(item['id']): item for item in actionable_items}
-        logger.info(f"Actionable items map: {actionable_map}")
+        logger.info(f"Processing message with {len(actionable_items)} actionable items")
 
-        # Split the content into paragraphs
+        # Split content into paragraphs
         paragraphs = content.split('\n\n')
 
         for p_idx, paragraph in enumerate(paragraphs):
-            # Check if this paragraph contains any actionable items
+            # Check for actionable items
             actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
             matches = list(re.finditer(actionable_pattern, paragraph))
-            logger.debug(f"Found {len(matches)} actionable items in paragraph {p_idx}")
 
             if matches:
-                # If paragraph contains actionable items, process them
+                # Process paragraph with actionable items
                 last_end = 0
                 for match in matches:
-                    # Print text before the actionable item
+                    # Print text before actionable item
                     if match.start() > last_end:
                         st.markdown(paragraph[last_end:match.start()])
 
-                    # Get the actionable item details
+                    # Get actionable item details
                     item_id = match.group(1)
                     text = match.group(2)
 
-                    logger.debug(f"Processing actionable item {item_id}: {text[:50]}...")
-
                     if item_id in actionable_map:
-                        # Generate a unique key for this specific item
-                        unique_key = f"add_plan_{p_idx}_{item_id}"
-
-                        # Create a container for the text and link
+                        item = actionable_map[item_id]
+                        # Create unique container for the content
                         with st.container():
-                            # Display the text and link in a clean format
-                            if st.button("➕ Add to Plan", key=unique_key, type="secondary"):
-                                if add_to_plan(actionable_map[item_id]):
-                                    st.toast('✅ Added to plan', icon='✅')
-                            st.markdown(text)
+                            # Display text first
+                            st.write(text)
+                            # Then add the "Add to Plan" link
+                            if st.button("➕ Add to Plan", key=f"plan_{p_idx}_{item_id}", use_container_width=False):
+                                if add_to_plan(item):
+                                    st.toast("Added to plan!", icon="✅")
 
                     last_end = match.end()
 
-                # Print any remaining text after the last actionable item
+                # Print remaining text
                 if last_end < len(paragraph):
                     st.markdown(paragraph[last_end:])
             else:
-                # If no actionable items in this paragraph, just print it
+                # No actionable items, print whole paragraph
                 st.markdown(paragraph)
 
     except Exception as e:
-        logger.error(f"Error in parse_and_render_message: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Error parsing message: {str(e)}\n{traceback.format_exc()}")
         st.error("Error displaying message content")
 
 @handle_error
