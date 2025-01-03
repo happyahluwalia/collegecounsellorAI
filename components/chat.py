@@ -9,6 +9,7 @@ import json
 import re
 import time
 import random
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -56,16 +57,17 @@ def handle_plan_item_add(item_id: str, item: dict) -> None:
             result = db.execute_one(
                 """
                 INSERT INTO plan_items 
-                (user_id, activity_text, category, grade_year, status)
+                (user_id, activity_text, category, grade_year, status, item_id)
                 VALUES 
-                (%s, %s, %s, %s, 'pending')
+                (%s, %s, %s, %s, 'pending', %s)
                 RETURNING id;
                 """,
                 (
                     user_id,
                     item["text"],
                     item["category"],
-                    item["year"]
+                    item["year"],
+                    item_id
                 )
             )
 
@@ -88,59 +90,51 @@ def parse_and_render_message(content: str, actionable_items: list):
         actionable_map = {str(item['id']): item for item in actionable_items}
         logger.info(f"Starting to parse message with {len(actionable_items)} actionable items")
 
-        # Find all actionable items in the content
-        actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
-        matches = list(re.finditer(actionable_pattern, content))
-        logger.info(f"Found {len(matches)} actionable items in content")
+        # Split content into chunks based on actionable tags
+        parts = re.split(r'(<actionable id="[^"]+">.*?</actionable>)', content, flags=re.DOTALL)
 
-        last_end = 0
-        for match in matches:
-            # Render text before the actionable item
-            if match.start() > last_end:
-                pre_text = content[last_end:match.start()]
-                if pre_text.strip():
-                    st.markdown(pre_text)
+        for part in parts:
+            # Check if this part is an actionable item
+            match = re.match(r'<actionable id="([^"]+)">(.*?)</actionable>', part, re.DOTALL)
 
-            # Process the actionable item
-            item_id = match.group(1)
-            text = match.group(2)
+            if match:
+                item_id = match.group(1)
+                text = match.group(2)
 
-            if item_id in actionable_map:
-                item = actionable_map[item_id]
-                logger.info(f"Processing actionable item {item_id}: {item}")
+                if item_id in actionable_map:
+                    item = actionable_map[item_id]
+                    logger.info(f"Processing actionable item {item_id}: {item}")
 
-                # Create container for the item
-                item_container = st.container()
-                with item_container:
-                    cols = st.columns([0.9, 0.1])
-                    with cols[0]:
-                        st.markdown(text)
+                    # Create container for the item
+                    item_container = st.container()
+                    with item_container:
+                        cols = st.columns([0.9, 0.1])
+                        with cols[0]:
+                            st.markdown(text)
 
-                    with cols[1]:
-                        # Use simple button key based on item_id from LLM
-                        button_key = f"add_btn_{item_id}"
-                        state_key = f"plan_item_{item_id}_added"
+                        with cols[1]:
+                            # Use simple button key based on item_id
+                            button_key = f"add_btn_{item_id}"
+                            state_key = f"plan_item_{item_id}_added"
 
-                        # Initialize state if needed
-                        if state_key not in st.session_state:
-                            st.session_state[state_key] = False
+                            # Initialize state if needed
+                            if state_key not in st.session_state:
+                                st.session_state[state_key] = False
 
-                        # Show add button or nothing based on state
-                        if not st.session_state[state_key]:
-                            if st.button("➕", key=button_key, help="Add to your plan"):
-                                handle_plan_item_add(item_id, item)
-                                st.rerun()  # Rerun to update UI after adding item
-
-            last_end = match.end()
-
-        # Render any remaining text
-        if last_end < len(content):
-            remaining = content[last_end:]
-            if remaining.strip():
-                st.markdown(remaining)
+                            # Show add button or checkmark based on state
+                            if not st.session_state[state_key]:
+                                if st.button("➕", key=button_key, help="Add to your plan"):
+                                    handle_plan_item_add(item_id, item)
+                                    st.rerun()
+                else:
+                    logger.warning(f"No metadata found for actionable item {item_id}")
+            else:
+                # Regular text content
+                if part.strip():
+                    st.markdown(part)
 
     except Exception as e:
-        logger.error(f"Error in parse_and_render_message: {str(e)}")
+        logger.error(f"Error in parse_and_render_message: {str(e)}\n{traceback.format_exc()}")
         st.error("Error displaying message")
 
 @handle_error
@@ -162,16 +156,17 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
         result = db.execute_one(
             """
             INSERT INTO plan_items 
-            (user_id, activity_text, category, grade_year, status)
+            (user_id, activity_text, category, grade_year, status, item_id)
             VALUES 
-            (%s, %s, %s, %s, 'pending')
+            (%s, %s, %s, %s, 'pending', %s)
             RETURNING id;
             """,
             (
                 user_id,
                 actionable_item["text"],
                 actionable_item["category"],
-                actionable_item["year"]
+                actionable_item["year"],
+                actionable_item["id"]
             )
         )
 
