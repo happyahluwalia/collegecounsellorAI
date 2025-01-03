@@ -96,7 +96,7 @@ def parse_and_render_message(content: str, actionable_items: list):
                         st.markdown(text)
 
                     with cols[1]:
-                        button_key = f"add_plan_{item_id}"
+                        button_key = f"add_btn_{item_id}_{int(time.time())}"
                         state_key = f"plan_item_{item_id}_added"
 
                         # Initialize state if needed
@@ -105,7 +105,7 @@ def parse_and_render_message(content: str, actionable_items: list):
 
                         # Show add link or nothing based on state
                         if not st.session_state[state_key]:
-                            if st.link_button("➕", key=button_key, help="Add to your plan"):
+                            if st.button("➕", help="Add to your plan"):
                                 handle_plan_item_add(item_id, item)
 
             last_end = match.end()
