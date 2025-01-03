@@ -45,126 +45,36 @@ def init_chat():
 def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
     """Add an actionable item to the student's plan"""
     try:
-        logger.info("=== Starting add_to_plan function ===")
-        logger.info(f"Received actionable item: {json.dumps(actionable_item, indent=2)}")
-
-        # Log complete session state for debugging
-        logger.info("=== Session State Debug ===")
-        for key in st.session_state:
-            if key != 'client':  # Skip streamlit client object
-                logger.info(f"Session state key: {key}")
-                logger.info(f"Session state value type: {type(st.session_state[key])}")
-                if key == 'user':
-                    logger.info(f"User object dir: {dir(st.session_state.user)}")
-                    logger.info(f"User object attributes: {vars(st.session_state.user)}")
-
-        # Check if user is logged in and has session state
-        if not hasattr(st.session_state, 'user'):
-            logger.warning("No user in session state")
-            return False, "Please log in to add items to your plan"
-
+        # Basic validation
         if not st.session_state.user:
-            logger.warning("User object is None in session state")
             return False, "Please log in to add items to your plan"
-
-        logger.info(f"User authenticated: {st.session_state.user.id}")
-
-        # Verify database connection
-        db = st.session_state.user.db
-        if not db:
-            logger.error("Database connection not available")
-            return False, "Database connection error"
 
         user_id = st.session_state.user.id
-        logger.debug(f"User ID: {user_id}, Database connection: {db}")
+        db = st.session_state.user.db
 
-        # Log database connection details
-        logger.info("=== Database Connection Debug ===")
-        logger.info(f"Database object type: {type(db)}")
-        logger.info(f"Database object methods: {dir(db)}")
-
-        # Verify user exists in database
-        user_check = db.execute_one(
+        # Simple insert with minimal parameters
+        result = db.execute_one(
             """
-            SELECT id, email FROM users WHERE id = %s
-            """, 
-            (user_id,)
-        )
-        if not user_check:
-            logger.error(f"User {user_id} not found in database")
-            return False, "User not found in database"
-        logger.info(f"Verified user exists: {json.dumps(user_check)}")
-
-        # Validate required fields
-        required_fields = ['text', 'category', 'year']
-        for field in required_fields:
-            if field not in actionable_item:
-                logger.error(f"Missing required field: {field}")
-                return False, f"Missing required field: {field}"
-
-        try:
-            # Log all plan_items table info
-            table_info = db.execute_one("SELECT COUNT(*) FROM plan_items")
-            logger.info(f"Current plan_items count: {table_info}")
-
-            # Prepare parameters
-            params = (
+            INSERT INTO plan_items 
+            (user_id, activity_text, category, grade_year, status)
+            VALUES 
+            (%s, %s, %s, %s, 'pending')
+            RETURNING id;
+            """,
+            (
                 user_id,
                 actionable_item["text"],
                 actionable_item["category"],
-                actionable_item["year"],
-                actionable_item.get("url"),
-                json.dumps({"source": "chat_recommendation"})
+                actionable_item["year"]
             )
-            logger.info(f"SQL Parameters: {params}")
+        )
 
-            # Insert with detailed error catching
-            try:
-                result = db.execute_one(
-                    """
-                    INSERT INTO plan_items 
-                    (user_id, activity_text, category, grade_year, url, status, metadata)
-                    VALUES (%s, %s, %s, %s, %s, 'pending', %s)
-                    RETURNING id, activity_text;
-                    """,
-                    params
-                )
-
-                if not result:
-                    logger.error("Insert returned no result")
-                    return False, "Failed to add item to plan: No result returned"
-
-                logger.info(f"Insert successful, returned ID: {result.get('id')}")
-
-                # Verify the insert worked
-                verification = db.execute_one(
-                    "SELECT id FROM plan_items WHERE id = %s",
-                    (result['id'],)
-                )
-
-                if verification:
-                    logger.info("Insert verified successfully")
-                    return True, "Added to plan successfully!"
-                else:
-                    logger.error("Could not verify inserted record")
-                    return False, "Failed to verify item was added"
-
-            except Exception as insert_error:
-                error_msg = str(insert_error)
-                logger.error(f"Insert failed: {error_msg}\n{traceback.format_exc()}")
-
-                if "violates foreign key constraint" in error_msg:
-                    logger.error(f"Foreign key constraint violation for user_id: {user_id}")
-                    return False, "Database foreign key error - please try logging in again"
-
-                return False, f"Database error: {error_msg}"
-
-        except Exception as db_error:
-            logger.error(f"Database operation failed: {str(db_error)}\n{traceback.format_exc()}")
-            return False, f"Database error: {str(db_error)}"
+        if result and 'id' in result:
+            return True, "Added to plan successfully!"
+        return False, "Failed to add item"
 
     except Exception as e:
-        logger.error(f"Error in add_to_plan: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Error in add_to_plan: {str(e)}")
         return False, str(e)
 
 def parse_and_render_message(content: str, actionable_items: list):
@@ -172,18 +82,10 @@ def parse_and_render_message(content: str, actionable_items: list):
     try:
         # Create a mapping of item_id to item details
         actionable_map = {str(item['id']): item for item in actionable_items}
-        logger.info(f"Processing message with {len(actionable_items)} actionable items")
-        logger.debug(f"Actionable items map: {json.dumps(actionable_map, indent=2)}")
-
-        if not isinstance(content, str):
-            logger.error(f"Content is not a string: {type(content)}")
-            st.error("Invalid content format")
-            return
 
         # Find all actionable items in the content
         actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
         matches = list(re.finditer(actionable_pattern, content))
-        logger.info(f"Found {len(matches)} actionable items in content")
 
         last_end = 0
         for match in matches:
@@ -199,29 +101,19 @@ def parse_and_render_message(content: str, actionable_items: list):
 
             if item_id in actionable_map:
                 item = actionable_map[item_id]
-                logger.debug(f"Rendering actionable item {item_id}")
 
-                cols = st.columns([0.92, 0.08])
+                cols = st.columns([0.9, 0.1])
                 with cols[0]:
                     st.markdown(text)
 
                 with cols[1]:
-                    # Generate a unique key using timestamp and item_id
-                    timestamp = int(time.time() * 1000)
-                    unique_key = f"btn_{timestamp}_{item_id}"
-
-                    if st.button("➕", key=unique_key, help="Add this item to your plan"):
-                        logger.info(f"Add button clicked for item {item_id}")
+                    unique_key = generate_unique_key("btn", item_id)
+                    if st.button("Add", key=unique_key):
                         success, message = add_to_plan(item)
                         if success:
-                            st.toast("✅ Added to plan!", icon="✅")
-                            logger.info(f"Successfully added item {item_id}")
+                            st.success("Added to plan!")
                         else:
-                            st.warning(message)
-                            logger.error(f"Failed to add item {item_id}: {message}")
-            else:
-                logger.warning(f"Item {item_id} not found in actionable_map")
-                st.markdown(text)
+                            st.error(message)
 
             last_end = match.end()
 
@@ -232,7 +124,7 @@ def parse_and_render_message(content: str, actionable_items: list):
                 st.markdown(remaining)
 
     except Exception as e:
-        logger.error(f"Error in parse_and_render_message: {str(e)}\n{traceback.format_exc()}")
+        logger.error(f"Error in parse_and_render_message: {str(e)}")
         st.error("Error displaying message")
 
 @handle_error
