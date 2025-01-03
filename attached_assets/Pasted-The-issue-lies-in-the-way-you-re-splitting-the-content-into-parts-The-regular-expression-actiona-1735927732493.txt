@@ -1,0 +1,53 @@
+The issue lies in the way you're splitting the content into parts. The regular expression `(<actionable id="[^"]+">.*?</actionable>)` is not correctly splitting the content into actionable items and regular text.
+
+The `re.split()` function is splitting the content into parts, but it's not including the matched groups (the actionable items) in the resulting list. Instead, it's including the parts of the content that are not matched by the regular expression.
+
+To fix this, you can use the `re.findall()` function to find all occurrences of the actionable items in the content. Here's an updated version of your code:
+
+```python
+import re
+
+# ...
+
+actionable_items = re.findall(r'<actionable id="([^"]+)">(.*?)</actionable>', content, flags=re.DOTALL)
+
+for item_id, text in actionable_items:
+    if item_id in actionable_map:
+        item = actionable_map[item_id]
+        logger.info(f"Processing actionable item {item_id}: {item}")
+
+        # Create container for the item
+        item_container = st.container()
+        with item_container:
+            cols = st.columns([0.9, 0.1])
+            with cols[0]:
+                st.markdown(text)
+
+            with cols[1]:
+                # Use simple button key based on item_id
+                button_key = f"add_btn_{item_id}"
+                state_key = f"plan_item_{item_id}_added"
+
+                # Initialize state if needed
+                if state_key not in st.session_state:
+                    st.session_state[state_key] = False
+
+                # Show add button or checkmark based on state
+                if not st.session_state[state_key]:
+                    if st.button("➕", key=button_key, help="Add to your plan"):
+                        handle_plan_item_add(item_id, item)
+                        st.rerun()
+    else:
+        logger.warning(f"No metadata found for actionable item {item_id}")
+
+# Find and render regular text content
+regular_text = re.sub(r'<actionable id="[^"]+">.*?</actionable>', '', content, flags=re.DOTALL)
+if regular_text.strip():
+    st.markdown(regular_text)
+
+except Exception as e:
+    logger.error(f"Error in parse_and_render_message: {str(e)}\n{traceback.format_exc()}")
+    st.error("Error displaying message")
+```
+
+In this updated code, `re.findall()` is used to find all occurrences of the actionable items in the content. The `re.sub()` function is then used to remove the actionable items from the content, leaving only the regular text. This regular text is then rendered using `st.markdown()`.
