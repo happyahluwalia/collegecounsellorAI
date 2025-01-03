@@ -48,6 +48,16 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
         logger.info("=== Starting add_to_plan function ===")
         logger.info(f"Received actionable item: {json.dumps(actionable_item, indent=2)}")
 
+        # Log complete session state for debugging
+        logger.info("=== Session State Debug ===")
+        for key in st.session_state:
+            if key != 'client':  # Skip streamlit client object
+                logger.info(f"Session state key: {key}")
+                logger.info(f"Session state value type: {type(st.session_state[key])}")
+                if key == 'user':
+                    logger.info(f"User object dir: {dir(st.session_state.user)}")
+                    logger.info(f"User object attributes: {vars(st.session_state.user)}")
+
         # Check if user is logged in and has session state
         if not hasattr(st.session_state, 'user'):
             logger.warning("No user in session state")
@@ -68,12 +78,22 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
         user_id = st.session_state.user.id
         logger.debug(f"User ID: {user_id}, Database connection: {db}")
 
+        # Log database connection details
+        logger.info("=== Database Connection Debug ===")
+        logger.info(f"Database object type: {type(db)}")
+        logger.info(f"Database object methods: {dir(db)}")
+
         # Verify user exists in database
-        user_check = db.execute_one("SELECT id FROM users WHERE id = %s", (user_id,))
+        user_check = db.execute_one(
+            """
+            SELECT id, email FROM users WHERE id = %s
+            """, 
+            (user_id,)
+        )
         if not user_check:
             logger.error(f"User {user_id} not found in database")
             return False, "User not found in database"
-        logger.info(f"Verified user {user_id} exists in database")
+        logger.info(f"Verified user exists: {json.dumps(user_check)}")
 
         # Validate required fields
         required_fields = ['text', 'category', 'year']
@@ -83,6 +103,10 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
                 return False, f"Missing required field: {field}"
 
         try:
+            # Log all plan_items table info
+            table_info = db.execute_one("SELECT COUNT(*) FROM plan_items")
+            logger.info(f"Current plan_items count: {table_info}")
+
             # Prepare parameters
             params = (
                 user_id,
