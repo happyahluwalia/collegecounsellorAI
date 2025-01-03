@@ -45,11 +45,14 @@ def init_chat():
 def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
     """Add an actionable item to the student's plan"""
     try:
+        logger.info("=== Starting add_to_plan function ===")
+        logger.info(f"Received actionable item: {json.dumps(actionable_item, indent=2)}")
+
         if not hasattr(st.session_state, 'user'):
             logger.warning("User not logged in, cannot add to plan")
             return False, "Please log in to add items to your plan"
 
-        logger.info(f"Adding item to plan: {actionable_item}")
+        logger.info(f"Adding item to plan for user: {st.session_state.user.id}")
 
         db = st.session_state.user.db
         user_id = st.session_state.user.id
@@ -78,6 +81,7 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
             db.execute("BEGIN")
 
             try:
+                logger.info("Starting database insertion...")
                 # Insert into plan_items table
                 result = db.execute(
                     """
@@ -118,6 +122,7 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
 
                 # Commit the transaction
                 db.execute("COMMIT")
+                logger.info("=== Successfully completed add_to_plan function ===")
                 return True, "Added to plan successfully!"
 
             except Exception as db_error:
@@ -182,7 +187,9 @@ def parse_and_render_message(content: str, actionable_items: list):
                         with cols[1]:
                             # Generate a unique key for this button
                             unique_key = generate_unique_key("add", item_id)
+                            logger.info(f"Creating Add button with key: {unique_key} for item: {item_id}")
                             if st.button("➕ Add", key=unique_key, help="Add this item to your plan"):
+                                logger.info(f"Add button clicked for item: {item_id}")
                                 success, message = add_to_plan(item)
                                 if success:
                                     st.toast("✅ Added to plan!", icon="✅")
