@@ -150,7 +150,10 @@ def parse_and_render_message(content: str, actionable_items: list):
     except Exception as e:
         error_trace = traceback.format_exc()
         logger.error(f"Error parsing message: {str(e)}\n{error_trace}")
-        st.error("Error displaying message content")
+        # Show error with stack trace option
+        st.error("Error displaying message content. Check logs for details.")
+        if st.checkbox("Show Error Details"):
+            st.code(error_trace)
 
 @handle_error
 def render_chat():
