@@ -175,6 +175,7 @@ def parse_and_render_message(content: str, actionable_items: list):
 
                     if item_id in actionable_map:
                         item = actionable_map[item_id]
+                        logger.info(f"Found item in map: {json.dumps(item, indent=2)}")
 
                         # Create columns with better ratio
                         cols = st.columns([0.92, 0.08])
@@ -188,7 +189,9 @@ def parse_and_render_message(content: str, actionable_items: list):
                             # Generate a unique key for this button
                             unique_key = generate_unique_key("add", item_id)
                             logger.info(f"Creating Add button with key: {unique_key} for item: {item_id}")
-                            if st.button("➕ Add", key=unique_key, help="Add this item to your plan"):
+                            button_clicked = st.button("➕ Add", key=unique_key, help="Add this item to your plan")
+                            logger.info(f"Button {unique_key} clicked: {button_clicked}")
+                            if button_clicked:
                                 logger.info(f"Add button clicked for item: {item_id}")
                                 success, message = add_to_plan(item)
                                 if success:
