@@ -45,11 +45,19 @@ class PrimaryCounselorAgent(BaseAgent):
         try:
             if hasattr(self, 'config_manager') and self.config_manager:
                 logger.info(f"Loading template for agent type: {self.agent_type}")
-                templates = self.config_manager.templates.get('templates', {})
+                templates = self.config_manager.get_templates()
+                if not templates:
+                    logger.error("No templates found in config manager")
+                    return self._get_default_config()
+
                 template = templates.get(self.agent_type, {})
                 logger.info(f"Found template: {template}")
 
-                return {
+                if not template or 'base_prompt' not in template:
+                    logger.error(f"No valid template found for {self.agent_type}")
+                    return self._get_default_config()
+
+                config = {
                     'provider': 'openai',
                     'model_name': 'gpt-4-turbo-preview',
                     'temperature': 0.7,
@@ -60,10 +68,41 @@ class PrimaryCounselorAgent(BaseAgent):
                         'model_name': 'claude-3-sonnet'
                     }
                 }
-            return {}
+                logger.info(f"Loaded config with system prompt: {config['system_prompt_template'][:100]}...")
+                return config
+            return self._get_default_config()
         except Exception as e:
             logger.error(f"Error loading config: {str(e)}")
-            return {}
+            return self._get_default_config()
+
+    def _get_default_config(self) -> Dict:
+        """Return default configuration with fallback system prompt"""
+        default_prompt = """You are a college admissions counselor. Provide guidance and advice to students.
+        When providing recommendations, use the following format for actionable items:
+
+        <actionable id="1">Specific action or recommendation here</actionable>
+
+        At the end of your response, include:
+
+        [system]
+        actionable:
+        [1]
+        category: [Category]
+        year: [Grade Level]
+        url: [Optional URL]
+        [/system]
+        """
+        return {
+            'provider': 'openai',
+            'model_name': 'gpt-4-turbo-preview',
+            'temperature': 0.7,
+            'max_tokens': 2000,
+            'system_prompt_template': default_prompt,
+            'fallback': {
+                'provider': 'anthropic',
+                'model_name': 'claude-3-sonnet'
+            }
+        }
 
     def _parse_actionable_items(self, response: str) -> List[ActionableItem]:
         """Parse response to find actionable items and their details"""
