@@ -84,7 +84,7 @@ class PrimaryCounselorAgent(BaseAgent):
         """Parse response to find actionable items and their details"""
         try:
             logger.info("Parsing response for actionable items")
-            logger.debug(f"Raw response content:\n{response}")  # Add debug logging for raw content
+            logger.debug(f"Raw response content:\n{response}")
 
             # Extract all actionable tags with their content
             actionable_pattern = r'<actionable id="([^"]+)">(.*?)</actionable>'
@@ -92,70 +92,56 @@ class PrimaryCounselorAgent(BaseAgent):
             matches_list = list(actionable_matches)
             logger.info(f"Found {len(matches_list)} actionable tags in response")
 
-            if len(matches_list) == 0:
-                logger.debug("No matches found. Pattern used: %s", actionable_pattern)
-                # Try findall to double check
-                alt_matches = re.findall(actionable_pattern, response, re.DOTALL)
-                logger.debug("Alternate findall found %d matches: %s", len(alt_matches), alt_matches)
-
-            # Extract system message
+            # Extract system message - but make it optional
             system_pattern = r'\[system\]\s*actionable:\s*(.*?)\s*\[/system\]'
             system_match = re.search(system_pattern, response, re.DOTALL)
-
-            if not system_match:
-                logger.error("No system message found in response")
-                logger.debug("Response content:\n" + response)
-                return []
-
-            # Parse system metadata
-            system_content = system_match.group(1).strip()
-            logger.debug(f"System content: {system_content}")
             metadata = {}
 
-            # Parse each item block
-            item_blocks = re.finditer(r'\[(\d+)\](.*?)(?=\[\d+\]|\Z)', system_content, re.DOTALL)
+            if system_match:
+                # Parse system metadata
+                system_content = system_match.group(1).strip()
+                logger.debug(f"System content found: {system_content}")
 
-            for block in item_blocks:
-                item_id = block.group(1)
-                item_content = block.group(2).strip()
+                # Parse each item block
+                item_blocks = re.finditer(r'\[(\d+)\](.*?)(?=\[\d+\]|\Z)', system_content, re.DOTALL)
 
-                # Parse item metadata
-                item_metadata = {}
-                for line in item_content.split('\n'):
-                    line = line.strip()
-                    if ':' in line:
-                        key, value = line.split(':', 1)
-                        item_metadata[key.strip().lower()] = value.strip()
+                for block in item_blocks:
+                    item_id = block.group(1)
+                    item_content = block.group(2).strip()
 
-                # Validate required fields
-                if 'category' not in item_metadata or 'year' not in item_metadata:
-                    logger.error(f"Missing required fields for item {item_id}: {item_metadata}")
-                    continue
+                    # Parse item metadata
+                    item_metadata = {}
+                    for line in item_content.split('\n'):
+                        line = line.strip()
+                        if ':' in line:
+                            key, value = line.split(':', 1)
+                            item_metadata[key.strip().lower()] = value.strip()
 
-                metadata[item_id] = item_metadata
+                    metadata[item_id] = item_metadata
+            else:
+                logger.info("No system message found, using default metadata")
 
-            # Create ActionableItem objects
+            # Create ActionableItem objects with defaults if metadata is missing
             actionable_items = []
-            for match in matches_list:
+            for idx, match in enumerate(matches_list, 1):
                 item_id = match.group(1)
                 text = match.group(2).strip()
 
-                if item_id in metadata:
-                    item_meta = metadata[item_id]
-                    actionable_items.append(
-                        ActionableItem(
-                            item_id=item_id,
-                            text=text,
-                            category=item_meta.get('category', ''),
-                            year=item_meta.get('year', ''),
-                            url=item_meta.get('url')
-                        )
+                # Get metadata if available, otherwise use defaults
+                item_meta = metadata.get(str(idx), {})
+
+                actionable_items.append(
+                    ActionableItem(
+                        item_id=item_id,
+                        text=text,
+                        category=item_meta.get('category', 'General'),  # Default category
+                        year=item_meta.get('year', '9th, 10th, 11th, 12th'),  # Default year range
+                        url=item_meta.get('url')
                     )
-                else:
-                    logger.error(f"Missing metadata for actionable item {item_id}")
+                )
+                logger.info(f"Created actionable item {item_id} with text: {text[:50]}...")
 
             logger.info(f"Created {len(actionable_items)} ActionableItem objects")
-            logger.debug(f"Actionable items: {[item.to_dict() for item in actionable_items]}")
             return actionable_items
 
         except Exception as e:
