@@ -73,7 +73,7 @@ def add_to_plan(actionable_item):
         return False
 
 def parse_and_render_message(content: str, actionable_items: list):
-    """Parse message content and render with inline Add to Plan links"""
+    """Parse message content and render with inline Add to Plan buttons"""
     # Create a mapping of item_id to item details
     actionable_map = {str(item['id']): item for item in actionable_items}
 
@@ -98,18 +98,17 @@ def parse_and_render_message(content: str, actionable_items: list):
                 text = match.group(2)
 
                 if item_id in actionable_map:
-                    # Generate a unique key for this specific actionable item
+                    # Generate a unique key for this specific item
                     unique_key = f"add_plan_{p_idx}_{match_idx}_{item_id}"
 
-                    # Check query parameters using st.query_params
-                    if ('action' in st.query_params and st.query_params['action'] == 'add_plan' and 
-                        'id' in st.query_params and st.query_params['id'] == unique_key):
-                        add_to_plan(actionable_map[item_id])
-                        # Clear the query parameters
-                        st.query_params.clear()
-
-                    # Render the text and add a simple link after it
-                    st.markdown(f"{text} [➕ Add to Plan](?action=add_plan&id={unique_key})")
+                    # Create a container for the item and button
+                    with st.container():
+                        col1, col2 = st.columns([8, 1])
+                        with col1:
+                            st.markdown(text)
+                        with col2:
+                            if st.button("➕ Add", key=unique_key, type="secondary", use_container_width=True):
+                                add_to_plan(actionable_map[item_id])
 
                 last_end = match.end()
 
