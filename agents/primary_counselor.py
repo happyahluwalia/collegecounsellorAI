@@ -3,12 +3,10 @@ Primary Counselor Agent (PCA) implementation.
 This agent serves as the main interface for student interaction and conversation management.
 """
 
-from typing import Dict, Optional, List, Any
 import logging
 import re
+from typing import Dict, Optional, List, Any
 from .base import BaseAgent, AgentError
-from models.database import Database
-from src.config.manager import ConfigManager
 import json
 
 logger = logging.getLogger(__name__)
@@ -82,14 +80,14 @@ class PrimaryCounselorAgent(BaseAgent):
 
         <actionable id="1">Specific action or recommendation here</actionable>
 
-        At the end of your response, include:
+        For each actionable item, include a system message at the end of your response in this exact format:
 
         [system]
         actionable:
         [1]
-        category: [Category]
-        year: [Grade Level]
-        url: [Optional URL]
+        category: Category name (e.g. 'Summer Programs', 'Courses', etc.)
+        year: Grade year (e.g. '9th', '10th', '11th', '12th')
+        url: Optional URL for more information
         [/system]
         """
         return {
@@ -107,8 +105,11 @@ class PrimaryCounselorAgent(BaseAgent):
     def _parse_actionable_items(self, response: str) -> List[ActionableItem]:
         """Parse response to find actionable items and their details"""
         try:
+            logger.info("Parsing response for actionable items")
+            logger.debug(f"Raw response: {response}")
+
             # Extract all actionable tags with their content
-            actionable_pattern = r'<actionable id="([^"]+)">(.*?)</actionable>'
+            actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
             actionable_matches = re.finditer(actionable_pattern, response, re.DOTALL)
 
             # Extract system message
@@ -160,6 +161,7 @@ class PrimaryCounselorAgent(BaseAgent):
                         )
                     )
 
+            logger.info(f"Found {len(actionable_items)} actionable items")
             return actionable_items
 
         except Exception as e:
@@ -167,23 +169,12 @@ class PrimaryCounselorAgent(BaseAgent):
             return []
 
     def _format_response_with_actionable(self, response: str, actionable_items: List[ActionableItem]) -> Dict:
-        """Format the response by removing system message and actionable tags"""
+        """Format the response by removing system message and keeping actionable tags"""
         # Remove system message
         display_response = re.sub(r'\[system\].*?\[/system\]', '', response, flags=re.DOTALL).strip()
 
-        # Format actionable items within the text
-        for item in actionable_items:
-            # Replace the basic actionable tag with formatted text
-            display_response = display_response.replace(
-                f'<actionable id="{item.item_id}">{item.text}</actionable>',
-                f'{item.text}'  # Just keep the text, the UI will handle the formatting
-            )
-
-        # Clean up any remaining actionable tags (fallback)
-        display_response = re.sub(r'<actionable id="\d+">(.*?)</actionable>', r'\1', display_response)
-
-        # Clean up multiple newlines
-        display_response = re.sub(r'\n{3,}', '\n\n', display_response)
+        logger.debug(f"Formatted response: {display_response}")
+        logger.debug(f"Actionable items: {[item.to_dict() for item in actionable_items]}")
 
         return {
             "content": display_response,
@@ -193,8 +184,10 @@ class PrimaryCounselorAgent(BaseAgent):
     def _build_messages(self, message: str, context: Optional[Dict[str, Any]] = None) -> List[Dict]:
         """Build messages list for the API call including system prompt and context"""
         try:
-            base_prompt = """You are a college admissions counselor. Provide guidance and advice to students.
+            # Use a consistent system prompt
+            system_prompt = """You are a college admissions counselor. Provide guidance and advice to students.
             When providing recommendations, use the following format for actionable items:
+
             <actionable id="1">Specific action or recommendation here</actionable>
 
             For each actionable item, include a system message at the end of your response in this exact format:
@@ -202,17 +195,14 @@ class PrimaryCounselorAgent(BaseAgent):
             [system]
             actionable:
             [1]
-            category: [Category of activity e.g. 'Summer Programs', 'Courses', etc.]
-            year: [Grade year e.g. '9th', '10th', '11th', '12th']
-            url: [Optional URL for more information]
+            category: Category name (e.g. 'Summer Programs', 'Courses', etc.)
+            year: Grade year (e.g. '9th', '10th', '11th', '12th')
+            url: Optional URL for more information
             [/system]"""
 
-            logger.info(f"Building messages with base prompt: {base_prompt}")
+            logger.info(f"Building messages with system prompt: {system_prompt}")
             messages = [
-                {
-                    "role": "system",
-                    "content": base_prompt
-                }
+                {"role": "system", "content": system_prompt}
             ]
 
             # Add context if available
@@ -224,12 +214,7 @@ class PrimaryCounselorAgent(BaseAgent):
                 })
 
             # Add user message
-            messages.append({
-                "role": "user",
-                "content": message
-            })
-
-            logger.info(f"Complete messages array: {messages}")
+            messages.append({"role": "user", "content": message})
             return messages
 
         except Exception as e:
@@ -316,7 +301,9 @@ class PrimaryCounselorAgent(BaseAgent):
             logger.info(f"{self.__class__.__name__} generating response")
             messages = self._build_messages(message, context)
             raw_response = self._make_api_call(messages)
-            logger.info(f"Raw response received: {raw_response[:200]}...")  # Log first 200 chars
+
+            # Log the raw response for debugging
+            logger.info(f"Raw response received: {raw_response}")
 
             # Parse actionable items
             actionable_items = self._parse_actionable_items(raw_response)
@@ -324,7 +311,7 @@ class PrimaryCounselorAgent(BaseAgent):
 
             # Format the response
             formatted_response = self._format_response_with_actionable(raw_response, actionable_items)
-            logger.info(f"{self.__class__.__name__} successfully generated response with actionable items")
+            logger.info(f"{self.__class__.__name__} successfully generated response")
             return formatted_response
 
         except Exception as e:

@@ -89,7 +89,6 @@ def parse_and_render_message(content: str, actionable_items: list):
                 text = match.group(2)
 
                 if item_id in actionable_map:
-                    # Create columns for the actionable item and button
                     col1, col2 = st.columns([4, 1])
                     with col1:
                         st.markdown(f"{text}")
