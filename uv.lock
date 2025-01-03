@@ -1656,6 +1656,7 @@ dependencies = [
     { name = "pytz" },
     { name = "pyyaml" },
     { name = "streamlit" },
+    { name = "toml" },
 ]
 
 [package.metadata]
@@ -1677,6 +1678,7 @@ requires-dist = [
     { name = "pytz", specifier = ">=2024.2" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "streamlit", specifier = ">=1.41.1" },
+    { name = "toml", specifier = ">=0.10.2" },
 ]
 
 [[package]]

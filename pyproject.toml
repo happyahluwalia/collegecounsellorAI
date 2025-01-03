@@ -21,4 +21,5 @@ dependencies = [
     "pydantic>=2.10.4",
     "anthropic>=0.42.0",
     "pytest>=8.3.4",
+    "toml>=0.10.2",
 ]

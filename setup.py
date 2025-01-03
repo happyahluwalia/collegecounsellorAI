@@ -67,18 +67,26 @@ class SetupManager:
             with open('pyproject.toml', 'r') as f:
                 project_config = toml.load(f)
 
-            dependencies = project_config.get('tool', {}).get('poetry', {}).get('dependencies', {})
-            # Filter out python version requirement
-            required_packages = [pkg for pkg in dependencies.keys() if pkg != 'python']
+            dependencies = project_config.get('project', {}).get('dependencies', [])
 
-            import pkg_resources
-            installed_packages = [pkg.key for pkg in pkg_resources.working_set]
+            # Filter out version specifiers to get just package names
+            required_packages = [
+                pkg.split('>=')[0].strip() 
+                for pkg in dependencies
+            ]
 
-            missing_packages = [pkg for pkg in required_packages if pkg not in installed_packages]
+            logger.info(f"Required packages: {', '.join(required_packages)}")
 
-            if missing_packages:
-                logger.info(f"Installing missing packages: {', '.join(missing_packages)}")
-                subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing_packages)
+            # Use pip to install missing packages
+            try:
+                subprocess.check_call([
+                    sys.executable, "-m", "pip", "install", 
+                    *required_packages
+                ])
+                logger.info("All dependencies installed successfully")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to install dependencies: {str(e)}")
+                return False
 
             logger.info("All dependencies verified")
             return True
