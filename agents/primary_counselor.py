@@ -7,6 +7,8 @@ import logging
 import re
 from typing import Dict, Optional, List, Any
 from .base import BaseAgent, AgentError
+from src.config.manager import ConfigManager
+from models.database import Database
 import json
 
 logger = logging.getLogger(__name__)
@@ -34,40 +36,15 @@ class PrimaryCounselorAgent(BaseAgent):
 
     def __init__(self, agent_type: str = "primary_counselor", config_manager: Optional[ConfigManager] = None):
         super().__init__(agent_type=agent_type, config_manager=config_manager)
-        self.db = Database()
         self.config = self._load_config()
+        self.db = Database()  # Initialize database connection
         logger.info(f"Initialized {self.__class__.__name__} with config: {self.config}")
 
     def _load_config(self) -> Dict:
-        """Load configuration from YAML template"""
+        """Load configuration with default prompt if config manager fails"""
         try:
             if hasattr(self, 'config_manager') and self.config_manager:
-                logger.info(f"Loading template for agent type: {self.agent_type}")
-                if not hasattr(self.config_manager, '_prompts') or not self.config_manager._prompts:
-                    logger.error("No prompts found in config manager")
-                    return self._get_default_config()
-
-                templates = self.config_manager._prompts.get('templates', {})
-                template = templates.get(self.agent_type, {})
-                logger.info(f"Found template for {self.agent_type}: {template}")
-
-                if not template or 'base_prompt' not in template:
-                    logger.error(f"No valid template found for {self.agent_type}")
-                    return self._get_default_config()
-
-                config = {
-                    'provider': 'openai',
-                    'model_name': 'gpt-4-turbo-preview',
-                    'temperature': 0.7,
-                    'max_tokens': 2000,
-                    'system_prompt_template': template['base_prompt'],
-                    'fallback': {
-                        'provider': 'anthropic',
-                        'model_name': 'claude-3-sonnet'
-                    }
-                }
-                logger.info(f"Loaded config with system prompt: {config['system_prompt_template']}")
-                return config
+                return super()._load_config()
             return self._get_default_config()
         except Exception as e:
             logger.error(f"Error loading config: {str(e)}")
