@@ -172,31 +172,30 @@ class PrimaryCounselorAgent(BaseAgent):
     def _build_messages(self, message: str, context: Optional[Dict[str, Any]] = None) -> List[Dict]:
         """Build messages list for the API call including system prompt and context"""
         try:
-            # Use a consistent system prompt
-            system_prompt = """You are a college admissions counselor. Provide guidance and advice to students.
-            When providing recommendations, use the following format for actionable items:
+            # Get system prompt from config
+            system_prompt = self.config_manager.get_prompt_template('primary_counselor')
+            if not system_prompt:
+                logger.warning("Failed to load prompt template, using default")
+                system_prompt = """You are a college admissions counselor. Provide guidance and advice to students.
+                When providing recommendations, use the following format for actionable items:
 
-            <actionable id="1">Specific action or recommendation here</actionable>
+                <actionable id="1">Specific action or recommendation here</actionable>
 
-            For each actionable item, include a system message at the END of your response in this EXACT format:
+                For each actionable item, include a system message at the END of your response in this EXACT format:
 
-            [system]
-            actionable:
-            [1]
-            category: Category name (e.g. 'Summer Programs', 'Courses', etc.)
-            year: Grade year (e.g. '9th', '10th', '11th', '12th')
-            url: Optional URL for more information
-            [2]
-            category: Next category
-            year: Grade year
-            url: Optional URL
-            [/system]
+                [system]
+                actionable:
+                [1]
+                category: Category name (e.g. 'Summer Programs', 'Courses', etc.)
+                year: Grade year (e.g. '9th', '10th', '11th', '12th')
+                url: Optional URL for more information
+                [/system]
 
-            IMPORTANT: 
-            1. Make sure to include ALL actionable items in the system message
-            2. Each actionable item MUST have a corresponding entry in the system message
-            3. The system message MUST be at the END of your response
-            4. Always include category and year for each actionable item"""
+                IMPORTANT: 
+                1. Make sure to include ALL actionable items in the system message
+                2. Each actionable item MUST have a corresponding entry in the system message
+                3. The system message MUST be at the END of your response
+                4. Always include category and year for each actionable item"""
 
             logger.info(f"Building messages with system prompt: {system_prompt}")
             messages = [
