@@ -1,2 +1,1 @@
-git clone <repository-url>
-   cd college-compass
+python3 setup.py
