@@ -12,6 +12,27 @@ import random
 
 logger = logging.getLogger(__name__)
 
+def init_chat():
+    """Initialize chat session state variables."""
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+    if 'error_message' not in st.session_state:
+        st.session_state.error_message = None
+    if 'error_details' not in st.session_state:
+        st.session_state.error_details = None
+    if 'agent_orchestrator' not in st.session_state:
+        try:
+            logger.info("Initializing AgentOrchestrator")
+            st.session_state.agent_orchestrator = AgentOrchestrator()
+            logger.info("AgentOrchestrator initialized successfully")
+        except Exception as e:
+            error_trace = traceback.format_exc()
+            logger.error(f"Failed to initialize AgentOrchestrator: {str(e)}\n{error_trace}")
+            st.session_state.error_message = "Failed to initialize AI system"
+            st.session_state.error_details = error_trace
+    if 'current_session_id' not in st.session_state:
+        st.session_state.current_session_id = None
+
 def handle_plan_item_add(item_id: str, item: dict) -> None:
     """Handle adding item to plan with proper state management"""
     state_key = f"plan_item_{item_id}_added"
@@ -122,6 +143,7 @@ def parse_and_render_message(content: str, actionable_items: list):
         logger.error(f"Error in parse_and_render_message: {str(e)}")
         st.error("Error displaying message")
 
+@handle_error
 def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
     """Add an actionable item to the student's plan"""
     try:
@@ -163,7 +185,6 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
     except Exception as e:
         logger.error(f"Error in add_to_plan: {str(e)}")
         return False, f"Error: {str(e)}"
-
 
 @handle_error
 def render_chat():
