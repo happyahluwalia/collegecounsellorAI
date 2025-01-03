@@ -77,11 +77,11 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
             )
             logger.debug(f"SQL Parameters: {params}")
 
-            # Execute a test query to verify database connection
+            # Test database connection
             test_result = db.execute_one("SELECT NOW()")
             logger.info(f"Database connection test: {test_result}")
 
-            # Execute direct insertion for testing
+            # Insert the plan item
             insert_result = db.execute_one(
                 """
                 INSERT INTO plan_items 
@@ -91,7 +91,7 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
                 """,
                 params
             )
-            logger.info(f"Direct insert result: {insert_result}")
+            logger.info(f"Insert result: {insert_result}")
 
             if insert_result and 'id' in insert_result:
                 logger.info(f"Successfully added item to plan with ID: {insert_result['id']}")
@@ -124,7 +124,7 @@ def parse_and_render_message(content: str, actionable_items: list):
         # Find all actionable items in the content
         actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
         matches = list(re.finditer(actionable_pattern, content))
-        logger.debug(f"Found {len(matches)} actionable items in content")
+        logger.info(f"Found {len(matches)} actionable items in content")
 
         last_end = 0
         for match in matches:
@@ -147,22 +147,19 @@ def parse_and_render_message(content: str, actionable_items: list):
                     st.markdown(text)
 
                 with cols[1]:
-                    button_key = f"add_button_{item_id}"
-                    if button_key not in st.session_state:
-                        st.session_state[button_key] = False
+                    # Generate a unique key using timestamp and item_id
+                    timestamp = int(time.time() * 1000)
+                    unique_key = f"btn_{timestamp}_{item_id}"
 
-                    if st.button("➕ Add", key=button_key, help="Add this item to your plan"):
-                        logger.info(f"Button clicked for item {item_id}")
-                        if not st.session_state[button_key]:
-                            st.session_state[button_key] = True
-                            success, message = add_to_plan(item)
-                            if success:
-                                st.toast("✅ Added to plan!", icon="✅")
-                                logger.info(f"Successfully added item {item_id}")
-                            else:
-                                st.warning(message)
-                                logger.error(f"Failed to add item {item_id}: {message}")
-                                st.session_state[button_key] = False
+                    if st.button("➕", key=unique_key, help="Add this item to your plan"):
+                        logger.info(f"Add button clicked for item {item_id}")
+                        success, message = add_to_plan(item)
+                        if success:
+                            st.toast("✅ Added to plan!", icon="✅")
+                            logger.info(f"Successfully added item {item_id}")
+                        else:
+                            st.warning(message)
+                            logger.error(f"Failed to add item {item_id}: {message}")
             else:
                 logger.warning(f"Item {item_id} not found in actionable_map")
                 st.markdown(text)
@@ -178,8 +175,6 @@ def parse_and_render_message(content: str, actionable_items: list):
     except Exception as e:
         logger.error(f"Error in parse_and_render_message: {str(e)}\n{traceback.format_exc()}")
         st.error("Error displaying message")
-        if st.checkbox("Show Error Details"):
-            st.code(traceback.format_exc())
 
 @handle_error
 def render_chat():
