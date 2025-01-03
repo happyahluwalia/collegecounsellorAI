@@ -5,6 +5,7 @@ from utils.error_handling import handle_error, DatabaseError, ValidationError, A
 import logging
 import traceback
 import asyncio
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -39,16 +40,23 @@ def add_to_plan(actionable_item):
         db = st.session_state.user.db
         user_id = st.session_state.user.id
 
-        # Add to plan table
+        # Add to plan table with enhanced schema
         db.execute(
             """
             INSERT INTO plan_items 
-            (user_id, category, year, url, status)
-            VALUES (%s, %s, %s, %s, 'pending')
+            (user_id, activity_text, category, grade_year, url, status, metadata)
+            VALUES (%s, %s, %s, %s, %s, 'pending', %s)
             """,
-            (user_id, actionable_item["category"], actionable_item["year"], actionable_item.get("url"))
+            (
+                user_id, 
+                actionable_item["text"], 
+                actionable_item["category"],
+                actionable_item["year"],
+                actionable_item.get("url"),
+                json.dumps({"source": "chat_recommendation"})
+            )
         )
-        st.success(f"Added '{actionable_item['text'][:50]}...' to your plan! 🎯")
+        st.success(f"Added to your plan! 🎯")
         logger.info(f"Added actionable item to plan for user {user_id}")
     except Exception as e:
         logger.error(f"Failed to add item to plan: {str(e)}")
@@ -60,14 +68,15 @@ def render_actionable_items(actionable_items, container):
         with container:
             col1, col2 = st.columns([4, 1])
             with col1:
+                # Display the text without any action/apply text since we have the button
                 st.markdown(
-                    f"""<span style='color: #1E88E5;'>
+                    f"""<div style='color: #1E88E5; padding: 10px; border-radius: 5px; background: #F5F5F5;'>
                     {item['text']}
-                    </span>""", 
+                    </div>""", 
                     unsafe_allow_html=True
                 )
             with col2:
-                if st.button("➕ Add to Plan", key=f"add_plan_{item['id']}"):
+                if st.button("➕ Add to Plan", key=f"add_plan_{item['id']}", type="primary"):
                     add_to_plan(item)
 
 @handle_error

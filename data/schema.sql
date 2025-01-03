@@ -52,6 +52,39 @@ CREATE TABLE user_achievements (
     UNIQUE(user_id, achievement_id)              -- User can't earn same achievement twice
 );
 
+-- Add new plan_items table after the achievement tables and before chat tables
+CREATE TABLE plan_items (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    version INTEGER DEFAULT 1,                  -- For tracking changes to items
+    activity_text TEXT NOT NULL,               -- The actual activity description
+    category VARCHAR(50) NOT NULL,             -- Category of the activity
+    grade_year VARCHAR(20) NOT NULL,           -- e.g., '9th', '10th', '11th', '12th'
+    status VARCHAR(20) DEFAULT 'pending',      -- Status of the activity (pending, completed, etc.)
+    url TEXT,                                  -- Optional URL for more information
+    metadata JSONB DEFAULT '{}',               -- Additional flexible data storage
+    date_added TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT valid_category CHECK (
+        category IN (
+            'Courses', 
+            'Extracurricular Activities', 
+            'Summer Programs', 
+            'Standardized Tests', 
+            'College Applications', 
+            'Career Exploration', 
+            'Networking and Mentorship', 
+            'General Resources'
+        )
+    )
+);
+
+-- Index for faster queries
+CREATE INDEX idx_plan_items_user_id ON plan_items(user_id);
+CREATE INDEX idx_plan_items_category ON plan_items(category);
+CREATE INDEX idx_plan_items_status ON plan_items(status);
+
+
 -- =============================================
 -- AI Chat System Tables
 -- Stores chat history and sessions for the AI counselor
