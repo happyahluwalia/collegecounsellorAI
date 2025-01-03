@@ -146,8 +146,8 @@ class PrimaryCounselorAgent(BaseAgent):
             return []
 
     def _format_response_with_actionable(self, response: str, actionable_items: List[ActionableItem]) -> Dict:
-        """Format the response by removing system message and keeping actionable tags"""
-        # Remove system message
+        """Format the response by removing system message but preserving actionable tags"""
+        # Remove system message while preserving actionable tags
         display_response = re.sub(r'\[system\].*?\[/system\]', '', response, flags=re.DOTALL).strip()
 
         logger.debug(f"Formatted response: {display_response}")

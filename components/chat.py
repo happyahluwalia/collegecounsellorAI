@@ -91,7 +91,7 @@ def parse_and_render_message(content: str, actionable_items: list):
                 if item_id in actionable_map:
                     col1, col2 = st.columns([4, 1])
                     with col1:
-                        st.markdown(f"{text}")
+                        st.markdown(text)
                     with col2:
                         if st.button("➕ Add to Plan", key=f"add_plan_{item_id}", type="primary"):
                             add_to_plan(actionable_map[item_id])
