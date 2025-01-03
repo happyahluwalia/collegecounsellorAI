@@ -193,13 +193,25 @@ class PrimaryCounselorAgent(BaseAgent):
     def _build_messages(self, message: str, context: Optional[Dict[str, Any]] = None) -> List[Dict]:
         """Build messages list for the API call including system prompt and context"""
         try:
-            # Get template from config
-            template = self.config.get('system_prompt_template', '')
-            logger.info(f"Using system prompt template (full): {template}")
+            base_prompt = """You are a college admissions counselor. Provide guidance and advice to students.
+            When providing recommendations, use the following format for actionable items:
+            <actionable id="1">Specific action or recommendation here</actionable>
+
+            For each actionable item, include a system message at the end of your response in this exact format:
+
+            [system]
+            actionable:
+            [1]
+            category: [Category of activity e.g. 'Summer Programs', 'Courses', etc.]
+            year: [Grade year e.g. '9th', '10th', '11th', '12th']
+            url: [Optional URL for more information]
+            [/system]"""
+
+            logger.info(f"Building messages with base prompt: {base_prompt}")
             messages = [
                 {
                     "role": "system",
-                    "content": template
+                    "content": base_prompt
                 }
             ]
 
@@ -217,7 +229,7 @@ class PrimaryCounselorAgent(BaseAgent):
                 "content": message
             })
 
-            logger.info(f"Built messages with system prompt and context. Complete messages: {messages}")
+            logger.info(f"Complete messages array: {messages}")
             return messages
 
         except Exception as e:
