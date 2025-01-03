@@ -101,15 +101,15 @@ def parse_and_render_message(content: str, actionable_items: list):
                     # Generate a unique key for this specific actionable item
                     unique_key = f"add_plan_{p_idx}_{match_idx}_{item_id}"
 
-                    # Render the text and add a simple link after it
-                    st.markdown(f"{text} [➕ Add to Plan](?action=add_plan&id={unique_key})")
-
-                    # Handle the add to plan action
-                    query_params = st.experimental_get_query_params()
-                    if query_params.get("action") == ["add_plan"] and query_params.get("id") == [unique_key]:
+                    # Check query parameters using st.query_params
+                    if ('action' in st.query_params and st.query_params['action'] == 'add_plan' and 
+                        'id' in st.query_params and st.query_params['id'] == unique_key):
                         add_to_plan(actionable_map[item_id])
                         # Clear the query parameters
-                        st.experimental_set_query_params()
+                        st.query_params.clear()
+
+                    # Render the text and add a simple link after it
+                    st.markdown(f"{text} [➕ Add to Plan](?action=add_plan&id={unique_key})")
 
                 last_end = match.end()
 
