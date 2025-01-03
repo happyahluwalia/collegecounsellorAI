@@ -48,13 +48,23 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
         logger.info("=== Starting add_to_plan function ===")
         logger.info(f"Received actionable item: {json.dumps(actionable_item, indent=2)}")
 
+        # Check if user is logged in and has session state
         if not hasattr(st.session_state, 'user'):
-            logger.warning("User not logged in, cannot add to plan")
+            logger.warning("No user in session state")
             return False, "Please log in to add items to your plan"
 
-        logger.info(f"Adding item to plan for user: {st.session_state.user.id}")
+        if not st.session_state.user:
+            logger.warning("User object is None in session state")
+            return False, "Please log in to add items to your plan"
 
+        logger.info(f"User authenticated: {st.session_state.user.id}")
+
+        # Verify database connection
         db = st.session_state.user.db
+        if not db:
+            logger.error("Database connection not available")
+            return False, "Database connection error"
+
         user_id = st.session_state.user.id
         logger.debug(f"User ID: {user_id}, Database connection: {db}")
 
@@ -66,7 +76,11 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
                 return False, f"Missing required field: {field}"
 
         try:
-            # Debug log the SQL parameters
+            # Execute a test query to ensure database connection is working
+            test_result = db.execute_one("SELECT 1")
+            logger.info(f"Database test query result: {test_result}")
+
+            # Prepare parameters
             params = (
                 user_id,
                 actionable_item["text"],
@@ -77,16 +91,9 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
             )
             logger.info(f"SQL Parameters: {params}")
 
-            # Test database connection
-            test_result = db.execute_one("SELECT NOW()")
-            logger.info(f"Database connection test result: {test_result}")
-
-            # Detailed logging of the insertion attempt
-            logger.info("Attempting to insert plan item...")
-
-            # Insert the plan item with detailed error logging
+            # Insert with detailed error catching
             try:
-                insert_result = db.execute_one(
+                result = db.execute_one(
                     """
                     INSERT INTO plan_items 
                     (user_id, activity_text, category, grade_year, url, status, metadata)
@@ -95,35 +102,32 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
                     """,
                     params
                 )
-                logger.info(f"Insert result: {insert_result}")
 
-                if insert_result and 'id' in insert_result:
-                    logger.info(f"Successfully added item to plan with ID: {insert_result['id']}")
+                if not result:
+                    logger.error("Insert returned no result")
+                    return False, "Failed to add item to plan: No result returned"
 
-                    # Verify the insertion with a select query
-                    verify_result = db.execute_one(
-                        "SELECT * FROM plan_items WHERE id = %s",
-                        (insert_result['id'],)
-                    )
-                    logger.info(f"Verification select result: {verify_result}")
+                logger.info(f"Insert successful, returned ID: {result.get('id')}")
 
+                # Verify the insert worked
+                verification = db.execute_one(
+                    "SELECT id FROM plan_items WHERE id = %s",
+                    (result['id'],)
+                )
+
+                if verification:
+                    logger.info("Insert verified successfully")
                     return True, "Added to plan successfully!"
                 else:
-                    logger.error("No ID returned from insert")
-                    return False, "Failed to add item to plan: No ID returned"
+                    logger.error("Could not verify inserted record")
+                    return False, "Failed to verify item was added"
 
             except Exception as insert_error:
-                logger.error(f"Insert error: {str(insert_error)}\n{traceback.format_exc()}")
-                # Try to get more details about the database state
-                try:
-                    table_check = db.execute_one("SELECT COUNT(*) FROM plan_items")
-                    logger.info(f"Current plan_items table count: {table_check}")
-                except Exception as check_error:
-                    logger.error(f"Could not check table state: {str(check_error)}")
-                return False, f"Database insert error: {str(insert_error)}"
+                logger.error(f"Insert failed: {str(insert_error)}\n{traceback.format_exc()}")
+                return False, f"Database error: {str(insert_error)}"
 
         except Exception as db_error:
-            logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
+            logger.error(f"Database operation failed: {str(db_error)}\n{traceback.format_exc()}")
             return False, f"Database error: {str(db_error)}"
 
     except Exception as e:
