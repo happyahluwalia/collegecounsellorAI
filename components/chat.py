@@ -7,8 +7,18 @@ import traceback
 import asyncio
 import json
 import re
+import time
+import random
 
 logger = logging.getLogger(__name__)
+
+def generate_unique_key(prefix, item_id):
+    """Generate a unique key for streamlit elements"""
+    timestamp = int(time.time() * 1000)  # Get current time in milliseconds
+    random_num = random.randint(1000, 9999)  # Generate a random 4-digit number
+    unique_key = f"{prefix}_{timestamp}_{random_num}_{item_id}"
+    logger.debug(f"Generated unique key: {unique_key}")
+    return unique_key
 
 def init_chat():
     """Initialize chat session state variables."""
@@ -127,7 +137,9 @@ def parse_and_render_message(content: str, actionable_items: list):
 
                         # Display the Add to Plan button in the second column
                         with cols[1]:
-                            if st.button("➕ Add", key=f"add_{p_idx}_{item_id}", help="Add this item to your plan"):
+                            # Generate a unique key for this button
+                            unique_key = generate_unique_key("add", item_id)
+                            if st.button("➕ Add", key=unique_key, help="Add this item to your plan"):
                                 success, message = add_to_plan(item)
                                 if success:
                                     st.toast("✅ Added to plan!", icon="✅")
@@ -149,6 +161,55 @@ def parse_and_render_message(content: str, actionable_items: list):
         st.error("Error displaying message content")
         if st.checkbox("Show Error Details"):
             st.code(error_trace)
+
+@handle_error
+def add_to_plan(actionable_item):
+    """Add an actionable item to the student's plan"""
+    try:
+        if not hasattr(st.session_state, 'user'):
+            return False, "Please log in to add items to your plan"
+
+        logger.info(f"Adding item to plan: {actionable_item}")
+
+        db = st.session_state.user.db
+        user_id = st.session_state.user.id
+
+        # Validate required fields
+        required_fields = ['text', 'category', 'year']
+        for field in required_fields:
+            if field not in actionable_item:
+                logger.error(f"Missing required field: {field}")
+                return False, f"Missing required field: {field}"
+
+        try:
+            # Insert into plan_items table
+            result = db.execute(
+                """
+                INSERT INTO plan_items 
+                (user_id, activity_text, category, grade_year, url, status, metadata)
+                VALUES (%s, %s, %s, %s, %s, 'pending', %s)
+                RETURNING id
+                """,
+                (
+                    user_id,
+                    actionable_item["text"],
+                    actionable_item["category"],
+                    actionable_item["year"],
+                    actionable_item.get("url"),
+                    json.dumps({"source": "chat_recommendation"})
+                )
+            )
+
+            logger.info("Successfully added item to plan")
+            return True, "Added to plan successfully!"
+
+        except Exception as db_error:
+            logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
+            return False, "Database error: Failed to add item to plan"
+
+    except Exception as e:
+        logger.error(f"Error in add_to_plan: {str(e)}\n{traceback.format_exc()}")
+        return False, str(e)
 
 @handle_error
 def render_chat():
