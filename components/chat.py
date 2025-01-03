@@ -49,7 +49,7 @@ def add_to_plan(actionable_item):
         for field in required_fields:
             if field not in actionable_item:
                 logger.error(f"Missing required field: {field}")
-                return False
+                raise ValidationError(f"Missing required field: {field}")
 
         try:
             # Insert into plan_items table
@@ -75,11 +75,11 @@ def add_to_plan(actionable_item):
 
         except Exception as db_error:
             logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
-            return False
+            raise DatabaseError("Failed to add item to plan")
 
     except Exception as e:
         logger.error(f"Error in add_to_plan: {str(e)}\n{traceback.format_exc()}")
-        return False
+        raise
 
 def parse_and_render_message(content: str, actionable_items: list):
     """Parse message content and render with inline Add to Plan buttons"""
@@ -121,16 +121,22 @@ def parse_and_render_message(content: str, actionable_items: list):
                         # Create unique key for this item
                         unique_key = f"plan_{p_idx}_{item_id}"
 
-                        # Display text and Add to Plan button separately
-                        col1, col2 = st.columns([0.9, 0.1])
+                        # Create two columns with adjusted ratio for better layout
+                        col1, col2 = st.columns([0.85, 0.15])
                         with col1:
                             st.markdown(text)
                         with col2:
-                            if st.button("➕", key=unique_key, help="Add this item to your plan"):
-                                success = add_to_plan(item)
-                                if success:
-                                    st.toast("✅ Added to plan!", icon="✅")
-                                else:
+                            # Use a container for better alignment
+                            with st.container():
+                                try:
+                                    if st.button("➕ Add to plan", key=unique_key, help="Add this item to your plan"):
+                                        success = add_to_plan(item)
+                                        if success:
+                                            st.toast("✅ Added to plan!", icon="✅")
+                                        else:
+                                            st.warning("Please log in to add items to your plan")
+                                except Exception as button_error:
+                                    logger.error(f"Error with add to plan button: {str(button_error)}")
                                     st.error("Failed to add to plan. Please try again.")
 
                     last_end = match.end()
