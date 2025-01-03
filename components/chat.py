@@ -68,6 +68,13 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
         user_id = st.session_state.user.id
         logger.debug(f"User ID: {user_id}, Database connection: {db}")
 
+        # Verify user exists in database
+        user_check = db.execute_one("SELECT id FROM users WHERE id = %s", (user_id,))
+        if not user_check:
+            logger.error(f"User {user_id} not found in database")
+            return False, "User not found in database"
+        logger.info(f"Verified user {user_id} exists in database")
+
         # Validate required fields
         required_fields = ['text', 'category', 'year']
         for field in required_fields:
@@ -76,10 +83,6 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
                 return False, f"Missing required field: {field}"
 
         try:
-            # Execute a test query to ensure database connection is working
-            test_result = db.execute_one("SELECT 1")
-            logger.info(f"Database test query result: {test_result}")
-
             # Prepare parameters
             params = (
                 user_id,
@@ -123,8 +126,14 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
                     return False, "Failed to verify item was added"
 
             except Exception as insert_error:
-                logger.error(f"Insert failed: {str(insert_error)}\n{traceback.format_exc()}")
-                return False, f"Database error: {str(insert_error)}"
+                error_msg = str(insert_error)
+                logger.error(f"Insert failed: {error_msg}\n{traceback.format_exc()}")
+
+                if "violates foreign key constraint" in error_msg:
+                    logger.error(f"Foreign key constraint violation for user_id: {user_id}")
+                    return False, "Database foreign key error - please try logging in again"
+
+                return False, f"Database error: {error_msg}"
 
         except Exception as db_error:
             logger.error(f"Database operation failed: {str(db_error)}\n{traceback.format_exc()}")
