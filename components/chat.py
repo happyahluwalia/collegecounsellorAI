@@ -118,25 +118,20 @@ def parse_and_render_message(content: str, actionable_items: list):
 
                     if item_id in actionable_map:
                         item = actionable_map[item_id]
-                        # Create unique link for this item
+                        # Create unique key for this item
                         unique_key = f"plan_{p_idx}_{item_id}"
 
-                        # Display the content and link
-                        st.markdown(
-                            f"{text} "
-                            f"[➕ Add to Plan](javascript:void(0))",
-                            key=unique_key
-                        )
-
-                        # Handle the click
-                        if st.session_state.get(unique_key, False):
-                            success = add_to_plan(item)
-                            if success:
-                                st.toast("✅ Added to plan!", icon="✅")
-                            else:
-                                st.error("Failed to add to plan. Please try again.")
-                            # Reset the state
-                            st.session_state[unique_key] = False
+                        # Display text and Add to Plan link separately
+                        col1, col2 = st.columns([0.9, 0.1])
+                        with col1:
+                            st.markdown(text)
+                        with col2:
+                            if st.link_button("➕", key=unique_key):
+                                success = add_to_plan(item)
+                                if success:
+                                    st.toast("✅ Added to plan!", icon="✅")
+                                else:
+                                    st.error("Failed to add to plan. Please try again.")
 
                     last_end = match.end()
 
