@@ -96,8 +96,8 @@ def parse_and_render_message(content: str, actionable_items: list):
                         st.markdown(text)
 
                     with cols[1]:
-                        # Use a simple, stable key based on item_id
-                        button_key = f"add_plan_{item_id}"
+                        # Use a stable key format that includes item_id and a fixed string
+                        button_key = f"add_btn_{item_id}"
                         state_key = f"plan_item_{item_id}_added"
 
                         # Initialize state if needed
