@@ -51,7 +51,7 @@ def handle_plan_item_add(item_id: str, item: dict) -> None:
             if result and 'id' in result:
                 logger.info(f"Successfully added plan item with ID: {result['id']}")
                 st.session_state[state_key] = True
-                st.success("✅ Added to plan!")
+                st.toast("✅ Added to plan!", icon="✅")
             else:
                 logger.error("Failed to add item - no ID returned")
                 st.error("Failed to add item to plan")
@@ -103,12 +103,10 @@ def parse_and_render_message(content: str, actionable_items: list):
                         if state_key not in st.session_state:
                             st.session_state[state_key] = False
 
-                        # Show add button or success message based on state
+                        # Show add link or nothing based on state
                         if not st.session_state[state_key]:
-                            if st.button("Add", key=button_key, help="Add to your plan"):
+                            if st.link_button("➕", key=button_key, help="Add to your plan"):
                                 handle_plan_item_add(item_id, item)
-                        else:
-                            st.success("✅ Added!")
 
             last_end = match.end()
 
