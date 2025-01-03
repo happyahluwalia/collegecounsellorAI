@@ -68,30 +68,48 @@ def parse_and_render_message(content: str, actionable_items: list):
     # Create a mapping of item_id to item details
     actionable_map = {str(item['id']): item for item in actionable_items}
 
-    # Split content by actionable tags
-    parts = re.split(r'(<actionable id="\d+">[^<]+</actionable>)', content)
+    # Split the content into paragraphs
+    paragraphs = content.split('\n\n')
 
-    for part in parts:
-        # Check if this part is an actionable item
-        match = re.match(r'<actionable id="(\d+)">([^<]+)</actionable>', part)
-        if match:
-            item_id, text = match.groups()
-            if item_id in actionable_map:
-                # Create columns for the actionable item and button
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    st.markdown(
-                        f"""<div style='color: #1E88E5; padding: 10px; border-radius: 5px; 
-                        background: #F5F5F5; margin-bottom: 5px;'>
-                        {text}</div>""",
-                        unsafe_allow_html=True
-                    )
-                with col2:
-                    if st.button("➕ Add to Plan", key=f"add_plan_{item_id}", type="primary"):
-                        add_to_plan(actionable_map[item_id])
+    for paragraph in paragraphs:
+        # Check if this paragraph contains any actionable items
+        actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
+        matches = list(re.finditer(actionable_pattern, paragraph))
+
+        if matches:
+            # If paragraph contains actionable items, process them
+            last_end = 0
+            for match in matches:
+                # Print text before the actionable item
+                if match.start() > last_end:
+                    st.markdown(paragraph[last_end:match.start()])
+
+                # Get the actionable item details
+                item_id = match.group(1)
+                text = match.group(2)
+
+                if item_id in actionable_map:
+                    # Create columns for the actionable item and button
+                    col1, col2 = st.columns([4, 1])
+                    with col1:
+                        st.markdown(
+                            f"""<div style='color: #1E88E5; padding: 10px; 
+                            border-radius: 5px; background: #F5F5F5; 
+                            margin-bottom: 5px;'>{text}</div>""",
+                            unsafe_allow_html=True
+                        )
+                    with col2:
+                        if st.button("➕ Add to Plan", key=f"add_plan_{item_id}", type="primary"):
+                            add_to_plan(actionable_map[item_id])
+
+                last_end = match.end()
+
+            # Print any remaining text after the last actionable item
+            if last_end < len(paragraph):
+                st.markdown(paragraph[last_end:])
         else:
-            # Regular text content
-            st.markdown(part)
+            # If no actionable items in this paragraph, just print it
+            st.markdown(paragraph)
 
 @handle_error
 def render_chat():

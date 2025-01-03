@@ -116,6 +116,7 @@ class PrimaryCounselorAgent(BaseAgent):
             system_match = re.search(system_pattern, response, re.DOTALL)
 
             if not system_match:
+                logger.warning("No system message found in response")
                 return []
 
             # Parse system metadata
@@ -127,6 +128,8 @@ class PrimaryCounselorAgent(BaseAgent):
             for line in system_content.split('\n'):
                 line = line.strip()
                 if line:
+                    if line.startswith('actionable:'):
+                        continue
                     if line.startswith('[') and line.endswith(']'):
                         if current_id is not None and current_metadata:
                             metadata[current_id] = current_metadata
@@ -168,12 +171,19 @@ class PrimaryCounselorAgent(BaseAgent):
         # Remove system message
         display_response = re.sub(r'\[system\].*?\[/system\]', '', response, flags=re.DOTALL).strip()
 
-        # Remove actionable tags but keep the content
+        # Format actionable items within the text
         for item in actionable_items:
+            # Replace the basic actionable tag with formatted text
             display_response = display_response.replace(
                 f'<actionable id="{item.item_id}">{item.text}</actionable>',
-                f'**{item.text}**'
+                f'{item.text}'  # Just keep the text, the UI will handle the formatting
             )
+
+        # Clean up any remaining actionable tags (fallback)
+        display_response = re.sub(r'<actionable id="\d+">(.*?)</actionable>', r'\1', display_response)
+
+        # Clean up multiple newlines
+        display_response = re.sub(r'\n{3,}', '\n\n', display_response)
 
         return {
             "content": display_response,
@@ -294,11 +304,14 @@ class PrimaryCounselorAgent(BaseAgent):
             logger.info(f"{self.__class__.__name__} generating response")
             messages = self._build_messages(message, context)
             raw_response = self._make_api_call(messages)
+            logger.info(f"Raw response received: {raw_response[:200]}...")  # Log first 200 chars
 
             # Parse actionable items
             actionable_items = self._parse_actionable_items(raw_response)
-            formatted_response = self._format_response_with_actionable(raw_response, actionable_items)
+            logger.info(f"Found {len(actionable_items)} actionable items")
 
+            # Format the response
+            formatted_response = self._format_response_with_actionable(raw_response, actionable_items)
             logger.info(f"{self.__class__.__name__} successfully generated response with actionable items")
             return formatted_response
 
