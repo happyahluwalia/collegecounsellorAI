@@ -1,9 +1,10 @@
 import os
 import sys
 import logging
-from typing import Optional
 import subprocess
 import time
+import toml
+from typing import Optional
 
 # Configure logging
 logging.basicConfig(
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 class SetupManager:
     def __init__(self):
         self.environment = self._detect_environment()
-        
+
     def _detect_environment(self) -> str:
         """Detect if running on Replit or locally"""
         return 'replit' if os.environ.get('REPL_ID') else 'local'
@@ -43,14 +44,14 @@ class SetupManager:
         """Set up the database schema and import initial data"""
         try:
             logger.info("Setting up database...")
-            
+
             # Import college data
             import data.import.college_data_importer
             importer = data.import.college_data_importer.CollegeDataImporter(
                 os.path.join('data', 'All_college_export.csv')
             )
             importer.import_all()
-            
+
             logger.info("Database setup completed successfully")
             return True
         except Exception as e:
@@ -59,27 +60,26 @@ class SetupManager:
 
     def verify_dependencies(self) -> bool:
         """Verify all required packages are installed"""
-        required_packages = [
-            'streamlit',
-            'langchain',
-            'openai',
-            'anthropic',
-            'psycopg2-binary',
-            'pyyaml',
-            'pandas',
-            'plotly'
-        ]
-        
         try:
+            logger.info("Verifying project dependencies...")
+
+            # Read dependencies from pyproject.toml
+            with open('pyproject.toml', 'r') as f:
+                project_config = toml.load(f)
+
+            dependencies = project_config.get('tool', {}).get('poetry', {}).get('dependencies', {})
+            # Filter out python version requirement
+            required_packages = [pkg for pkg in dependencies.keys() if pkg != 'python']
+
             import pkg_resources
             installed_packages = [pkg.key for pkg in pkg_resources.working_set]
-            
+
             missing_packages = [pkg for pkg in required_packages if pkg not in installed_packages]
-            
+
             if missing_packages:
                 logger.info(f"Installing missing packages: {', '.join(missing_packages)}")
                 subprocess.check_call([sys.executable, "-m", "pip", "install"] + missing_packages)
-            
+
             logger.info("All dependencies verified")
             return True
         except Exception as e:
@@ -91,7 +91,7 @@ class SetupManager:
         try:
             logger.info("Starting application...")
             os.makedirs('.streamlit', exist_ok=True)
-            
+
             # Create Streamlit config if it doesn't exist
             config_path = '.streamlit/config.toml'
             if not os.path.exists(config_path):
@@ -102,7 +102,7 @@ headless = true
 address = "0.0.0.0"
 port = 5000
                     """.strip())
-            
+
             # Start the application using subprocess
             subprocess.Popen([sys.executable, "-m", "streamlit", "run", "main.py"])
             logger.info("Application started successfully")
@@ -119,14 +119,14 @@ port = 5000
             ("Setting up database", self.setup_database),
             ("Starting application", self.start_application)
         ]
-        
+
         for step_name, step_func in steps:
             logger.info(f"Step: {step_name}")
             if not step_func():
                 logger.error(f"Setup failed at step: {step_name}")
                 return False
             logger.info(f"Completed: {step_name}")
-        
+
         logger.info("Setup completed successfully!")
         return True
 
