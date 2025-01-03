@@ -96,7 +96,8 @@ def parse_and_render_message(content: str, actionable_items: list):
                         st.markdown(text)
 
                     with cols[1]:
-                        button_key = f"add_btn_{item_id}_{int(time.time())}"
+                        # Generate a truly unique key combining item_id and a random number
+                        button_key = f"add_btn_{item_id}_{int(time.time())}_{random.randint(1000, 9999)}"
                         state_key = f"plan_item_{item_id}_added"
 
                         # Initialize state if needed
@@ -105,7 +106,7 @@ def parse_and_render_message(content: str, actionable_items: list):
 
                         # Show add link or nothing based on state
                         if not st.session_state[state_key]:
-                            if st.button("➕", help="Add to your plan"):
+                            if st.button("➕", key=button_key, help="Add to your plan"):
                                 handle_plan_item_add(item_id, item)
 
             last_end = match.end()
