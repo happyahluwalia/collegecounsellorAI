@@ -5,6 +5,7 @@ This agent serves as the main interface for student interaction and conversation
 
 import logging
 import re
+import traceback
 from typing import Dict, Optional, List, Any
 from .base import BaseAgent, AgentError
 from src.config.manager import ConfigManager
@@ -88,6 +89,8 @@ class PrimaryCounselorAgent(BaseAgent):
             # Extract all actionable tags with their content
             actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
             actionable_matches = re.finditer(actionable_pattern, response, re.DOTALL)
+            matches_list = list(actionable_matches)
+            logger.info(f"Found {len(matches_list)} actionable tags in response")
 
             # Extract system message
             system_pattern = r'\[system\](.*?)\[/system\]'
@@ -99,6 +102,7 @@ class PrimaryCounselorAgent(BaseAgent):
 
             # Parse system metadata
             system_content = system_match.group(1).strip()
+            logger.debug(f"System content: {system_content}")
             metadata = {}
             current_id = None
             current_metadata = {}
@@ -123,7 +127,7 @@ class PrimaryCounselorAgent(BaseAgent):
 
             # Create ActionableItem objects
             actionable_items = []
-            for match in actionable_matches:
+            for match in matches_list:
                 item_id = match.group(1)
                 text = match.group(2).strip()
                 if item_id in metadata:
@@ -138,11 +142,12 @@ class PrimaryCounselorAgent(BaseAgent):
                         )
                     )
 
-            logger.info(f"Found {len(actionable_items)} actionable items")
+            logger.info(f"Created {len(actionable_items)} ActionableItem objects")
+            logger.debug(f"Actionable items: {[item.to_dict() for item in actionable_items]}")
             return actionable_items
 
         except Exception as e:
-            logger.error(f"Error parsing actionable items: {str(e)}")
+            logger.error(f"Error parsing actionable items: {str(e)}\n{traceback.format_exc()}")
             return []
 
     def _format_response_with_actionable(self, response: str, actionable_items: List[ActionableItem]) -> Dict:

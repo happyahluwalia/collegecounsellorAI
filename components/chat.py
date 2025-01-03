@@ -87,6 +87,7 @@ def parse_and_render_message(content: str, actionable_items: list):
         # Create a mapping of item_id to item details
         actionable_map = {str(item['id']): item for item in actionable_items}
         logger.info(f"Processing message with {len(actionable_items)} actionable items")
+        logger.debug(f"Actionable items: {json.dumps(actionable_items, indent=2)}")
 
         # Split content into paragraphs
         paragraphs = content.split('\n\n')
@@ -95,6 +96,7 @@ def parse_and_render_message(content: str, actionable_items: list):
             # Check for actionable items
             actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
             matches = list(re.finditer(actionable_pattern, paragraph))
+            logger.debug(f"Found {len(matches)} actionable items in paragraph {p_idx}")
 
             if matches:
                 # Process paragraph with actionable items
@@ -107,17 +109,29 @@ def parse_and_render_message(content: str, actionable_items: list):
                     # Get actionable item details
                     item_id = match.group(1)
                     text = match.group(2)
+                    logger.debug(f"Processing item {item_id}: {text[:50]}...")
 
                     if item_id in actionable_map:
                         item = actionable_map[item_id]
-                        # Create unique container for the content
-                        with st.container():
-                            # Display text first
-                            st.write(text)
-                            # Then add the "Add to Plan" link
-                            if st.button("➕ Add to Plan", key=f"plan_{p_idx}_{item_id}", use_container_width=False):
-                                if add_to_plan(item):
-                                    st.toast("Added to plan!", icon="✅")
+                        # Create unique link for this item
+                        unique_key = f"plan_{p_idx}_{item_id}"
+
+                        # Display the content and link
+                        st.markdown(
+                            f"{text} "
+                            f"[➕ Add to Plan](javascript:void(0))",
+                            key=unique_key
+                        )
+
+                        # Handle the click
+                        if st.session_state.get(unique_key, False):
+                            success = add_to_plan(item)
+                            if success:
+                                st.toast("✅ Added to plan!", icon="✅")
+                            else:
+                                st.error("Failed to add to plan. Please try again.")
+                            # Reset the state
+                            st.session_state[unique_key] = False
 
                     last_end = match.end()
 
