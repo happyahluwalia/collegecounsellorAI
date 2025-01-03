@@ -9,7 +9,7 @@ def render_hero_section():
 
     with col2:
         # Center the avatar
-        image_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "images", "Coco.webp")
+        image_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "images", "coco.webp")
         st.image(image_path, use_container_width=True)
 
         # Main headline
