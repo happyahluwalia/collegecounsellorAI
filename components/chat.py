@@ -45,14 +45,18 @@ def init_chat():
 def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
     """Add an actionable item to the student's plan"""
     try:
-        # Basic validation
-        if not st.session_state.user:
+        logger.info(f"Adding item to plan: {actionable_item}")
+
+        if not hasattr(st.session_state, 'user') or not st.session_state.user:
+            logger.error("No user in session state")
             return False, "Please log in to add items to your plan"
 
         user_id = st.session_state.user.id
         db = st.session_state.user.db
 
-        # Simple insert with minimal parameters
+        logger.info(f"Adding plan item for user {user_id}")
+
+        # Insert the plan item
         result = db.execute_one(
             """
             INSERT INTO plan_items 
@@ -70,22 +74,27 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
         )
 
         if result and 'id' in result:
+            logger.info(f"Successfully added plan item with ID: {result['id']}")
             return True, "Added to plan successfully!"
+
+        logger.error("Failed to add item - no ID returned")
         return False, "Failed to add item"
 
     except Exception as e:
         logger.error(f"Error in add_to_plan: {str(e)}")
-        return False, str(e)
+        return False, f"Error: {str(e)}"
 
 def parse_and_render_message(content: str, actionable_items: list):
     """Parse message content and render with inline Add to Plan buttons"""
     try:
         # Create a mapping of item_id to item details
         actionable_map = {str(item['id']): item for item in actionable_items}
+        logger.info(f"Starting to parse message with {len(actionable_items)} actionable items")
 
         # Find all actionable items in the content
         actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
         matches = list(re.finditer(actionable_pattern, content))
+        logger.info(f"Found {len(matches)} actionable items in content")
 
         last_end = 0
         for match in matches:
@@ -101,19 +110,31 @@ def parse_and_render_message(content: str, actionable_items: list):
 
             if item_id in actionable_map:
                 item = actionable_map[item_id]
+                logger.info(f"Processing actionable item {item_id}: {item}")
 
-                cols = st.columns([0.9, 0.1])
-                with cols[0]:
-                    st.markdown(text)
+                # Create container for the item
+                item_container = st.container()
+                with item_container:
+                    cols = st.columns([0.9, 0.1])
+                    with cols[0]:
+                        st.markdown(text)
 
-                with cols[1]:
-                    unique_key = generate_unique_key("btn", item_id)
-                    if st.button("Add", key=unique_key):
-                        success, message = add_to_plan(item)
-                        if success:
-                            st.success("Added to plan!")
-                        else:
-                            st.error(message)
+                    with cols[1]:
+                        key = f"add_btn_{item_id}_{int(time.time())}"
+                        logger.info(f"Creating button with key: {key}")
+                        if st.button("Add", key=key):
+                            logger.info(f"Add button clicked for item {item_id}")
+                            try:
+                                success, message = add_to_plan(item)
+                                if success:
+                                    logger.info("Successfully added item to plan")
+                                    st.success("✅ Added to plan!", icon="✅")
+                                else:
+                                    logger.error(f"Failed to add item: {message}")
+                                    st.error(f"Failed to add: {message}")
+                            except Exception as e:
+                                logger.error(f"Error handling add button click: {str(e)}")
+                                st.error(f"Error: {str(e)}")
 
             last_end = match.end()
 
