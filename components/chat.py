@@ -82,7 +82,7 @@ def add_to_plan(actionable_item):
         return False
 
 def parse_and_render_message(content: str, actionable_items: list):
-    """Parse message content and render with inline Add to Plan links"""
+    """Parse message content and render with inline Add to Plan buttons"""
     try:
         # Create a mapping of item_id to item details
         actionable_map = {str(item['id']): item for item in actionable_items}
@@ -121,12 +121,12 @@ def parse_and_render_message(content: str, actionable_items: list):
                         # Create unique key for this item
                         unique_key = f"plan_{p_idx}_{item_id}"
 
-                        # Display text and Add to Plan link separately
+                        # Display text and Add to Plan button separately
                         col1, col2 = st.columns([0.9, 0.1])
                         with col1:
                             st.markdown(text)
                         with col2:
-                            if st.link_button("➕", key=unique_key):
+                            if st.button("➕", key=unique_key, help="Add this item to your plan"):
                                 success = add_to_plan(item)
                                 if success:
                                     st.toast("✅ Added to plan!", icon="✅")
