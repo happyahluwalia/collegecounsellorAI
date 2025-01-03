@@ -81,58 +81,28 @@ def add_to_plan(actionable_item: dict) -> tuple[bool, str]:
             test_result = db.execute_one("SELECT NOW()")
             logger.info(f"Database connection test: {test_result}")
 
-            # Start a transaction
-            db.execute("BEGIN")
-
-            try:
-                logger.info("Starting database insertion...")
-                # Insert into plan_items table
-                insert_sql = """
+            # Execute direct insertion for testing
+            insert_result = db.execute_one(
+                """
                 INSERT INTO plan_items 
                 (user_id, activity_text, category, grade_year, url, status, metadata)
                 VALUES (%s, %s, %s, %s, %s, 'pending', %s)
-                RETURNING id, activity_text;
-                """
-                logger.debug(f"Executing SQL: {insert_sql} with params: {params}")
+                RETURNING id, activity_text
+                """,
+                params
+            )
+            logger.info(f"Direct insert result: {insert_result}")
 
-                result = db.execute(insert_sql, params, fetch_all=True)
-                logger.info(f"Insert result: {result}")
-
-                if not result:
-                    logger.error("No result returned from INSERT")
-                    db.execute("ROLLBACK")
-                    return False, "Failed to add item to plan: No ID returned"
-
-                inserted_id = result[0]['id']
-                logger.info(f"Successfully added item to plan with ID: {inserted_id}")
-
-                # Verify the insertion
-                verification_sql = """
-                SELECT id, activity_text, category, grade_year 
-                FROM plan_items 
-                WHERE id = %s
-                """
-                verification = db.execute(verification_sql, (inserted_id,), fetch_all=True)
-                logger.info(f"Verification result: {verification}")
-
-                if not verification:
-                    logger.error("Verification failed - inserted row not found")
-                    db.execute("ROLLBACK")
-                    return False, "Failed to verify item insertion"
-
-                # Commit the transaction
-                db.execute("COMMIT")
-                logger.info("=== Successfully completed add_to_plan function ===")
+            if insert_result and 'id' in insert_result:
+                logger.info(f"Successfully added item to plan with ID: {insert_result['id']}")
                 return True, "Added to plan successfully!"
+            else:
+                logger.error("No ID returned from insert")
+                return False, "Failed to add item to plan"
 
-            except Exception as db_error:
-                db.execute("ROLLBACK")
-                logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
-                return False, f"Database error: {str(db_error)}"
-
-        except Exception as transaction_error:
-            logger.error(f"Transaction error: {str(transaction_error)}\n{traceback.format_exc()}")
-            return False, f"Transaction error: {str(transaction_error)}"
+        except Exception as db_error:
+            logger.error(f"Database error adding item to plan: {str(db_error)}\n{traceback.format_exc()}")
+            return False, f"Database error: {str(db_error)}"
 
     except Exception as e:
         logger.error(f"Error in add_to_plan: {str(e)}\n{traceback.format_exc()}")
@@ -145,61 +115,46 @@ def parse_and_render_message(content: str, actionable_items: list):
         actionable_map = {str(item['id']): item for item in actionable_items}
         logger.info(f"Processing message with {len(actionable_items)} actionable items")
         logger.debug(f"Actionable items: {json.dumps(actionable_items, indent=2)}")
-        logger.debug(f"Raw content: {content}")
 
-        # Split content into sections while preserving list formatting
+        # Split content into sections
         sections = re.split(r'(\n\n|\n(?=\d+\.))', content)
-        logger.debug(f"Split content into {len(sections)} sections")
 
-        for p_idx, section in enumerate(sections):
-            if not section.strip():  # Skip empty sections
+        for section in sections:
+            if not section.strip():
                 continue
 
             # Check for actionable items
             actionable_pattern = r'<actionable id="(\d+)">(.*?)</actionable>'
             matches = list(re.finditer(actionable_pattern, section))
-            logger.debug(f"Found {len(matches)} actionable items in section {p_idx}")
 
             if matches:
-                # Process section with actionable items
                 last_end = 0
                 for match in matches:
                     # Print text before actionable item
                     if match.start() > last_end:
                         st.markdown(section[last_end:match.start()])
 
-                    # Get actionable item details
                     item_id = match.group(1)
                     text = match.group(2)
-                    logger.debug(f"Processing item {item_id}: {text[:50]}...")
 
                     if item_id in actionable_map:
                         item = actionable_map[item_id]
                         logger.info(f"Found item in map: {json.dumps(item, indent=2)}")
 
-                        # Create columns with better ratio
                         cols = st.columns([0.92, 0.08])
-
-                        # Display the main text in the first column
                         with cols[0]:
                             st.markdown(text)
 
-                        # Display the Add to Plan button in the second column
                         with cols[1]:
-                            # Generate a unique key for this button
-                            unique_key = generate_unique_key("add", item_id)
-                            logger.info(f"Creating Add button with key: {unique_key} for item: {item_id}")
-
-                            # Create a session state key for this button if it doesn't exist
-                            button_key = f"button_clicked_{unique_key}"
+                            # Create unique session state key for this button
+                            button_key = f"add_button_{item_id}"
                             if button_key not in st.session_state:
                                 st.session_state[button_key] = False
 
-                            # Create the button and handle click
-                            if st.button("➕ Add", key=unique_key, help="Add this item to your plan"):
-                                logger.info(f"Button {unique_key} clicked!")
-                                if not st.session_state[button_key]:  # Only execute if not already clicked
-                                    logger.info(f"Processing click for item: {item_id}")
+                            # Use the button_key as both the key and session state key
+                            if st.button("➕ Add", key=button_key, help="Add this item to your plan"):
+                                logger.info(f"Button clicked for item {item_id}")
+                                if not st.session_state[button_key]:  # Prevent double execution
                                     st.session_state[button_key] = True
                                     success, message = add_to_plan(item)
                                     if success:
@@ -208,22 +163,18 @@ def parse_and_render_message(content: str, actionable_items: list):
                                     else:
                                         st.warning(message)
                                         logger.error(f"Failed to add item {item_id}: {message}")
+                                        st.session_state[button_key] = False  # Reset on failure
 
                     last_end = match.end()
 
-                # Print remaining text
                 if last_end < len(section):
                     st.markdown(section[last_end:])
             else:
-                # No actionable items, print whole section
                 st.markdown(section)
 
     except Exception as e:
-        error_trace = traceback.format_exc()
-        logger.error(f"Error parsing message: {str(e)}\n{error_trace}")
+        logger.error(f"Error in parse_and_render_message: {str(e)}\n{traceback.format_exc()}")
         st.error("Error displaying message content")
-        if st.checkbox("Show Error Details"):
-            st.code(error_trace)
 
 @handle_error
 def render_chat():
