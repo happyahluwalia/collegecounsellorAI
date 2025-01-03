@@ -6,6 +6,7 @@ import logging
 import traceback
 import asyncio
 import json
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -62,22 +63,35 @@ def add_to_plan(actionable_item):
         logger.error(f"Failed to add item to plan: {str(e)}")
         st.error("Failed to add item to your plan. Please try again.")
 
-def render_actionable_items(actionable_items, container):
-    """Render actionable items with inline 'Add to Plan' buttons"""
-    for item in actionable_items:
-        with container:
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                # Display the text without any action/apply text since we have the button
-                st.markdown(
-                    f"""<div style='color: #1E88E5; padding: 10px; border-radius: 5px; background: #F5F5F5;'>
-                    {item['text']}
-                    </div>""", 
-                    unsafe_allow_html=True
-                )
-            with col2:
-                if st.button("➕ Add to Plan", key=f"add_plan_{item['id']}", type="primary"):
-                    add_to_plan(item)
+def parse_and_render_message(content: str, actionable_items: list):
+    """Parse message content and render with inline Add to Plan buttons"""
+    # Create a mapping of item_id to item details
+    actionable_map = {str(item['id']): item for item in actionable_items}
+
+    # Split content by actionable tags
+    parts = re.split(r'(<actionable id="\d+">[^<]+</actionable>)', content)
+
+    for part in parts:
+        # Check if this part is an actionable item
+        match = re.match(r'<actionable id="(\d+)">([^<]+)</actionable>', part)
+        if match:
+            item_id, text = match.groups()
+            if item_id in actionable_map:
+                # Create columns for the actionable item and button
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.markdown(
+                        f"""<div style='color: #1E88E5; padding: 10px; border-radius: 5px; 
+                        background: #F5F5F5; margin-bottom: 5px;'>
+                        {text}</div>""",
+                        unsafe_allow_html=True
+                    )
+                with col2:
+                    if st.button("➕ Add to Plan", key=f"add_plan_{item_id}", type="primary"):
+                        add_to_plan(actionable_map[item_id])
+        else:
+            # Regular text content
+            st.markdown(part)
 
 @handle_error
 def render_chat():
@@ -113,15 +127,11 @@ def render_chat():
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 if isinstance(message.get("content"), dict):
-                    # Display main response
-                    st.markdown(message["content"]["content"])
-
-                    # Display actionable items if present
-                    if message["content"].get("actionable_items"):
-                        render_actionable_items(
-                            message["content"]["actionable_items"],
-                            st.container()
-                        )
+                    # Parse and render content with inline actionable items
+                    parse_and_render_message(
+                        message["content"]["content"],
+                        message["content"].get("actionable_items", [])
+                    )
                 else:
                     st.markdown(message["content"])
 
@@ -153,12 +163,10 @@ def render_chat():
 
                                 # Display and save response
                                 if isinstance(response, dict):
-                                    st.markdown(response["content"])
-                                    if response.get("actionable_items"):
-                                        render_actionable_items(
-                                            response["actionable_items"],
-                                            st.container()
-                                        )
+                                    parse_and_render_message(
+                                        response["content"],
+                                        response.get("actionable_items", [])
+                                    )
                                 else:
                                     st.markdown(response)
 
