@@ -1,6 +1,6 @@
 import streamlit as st
 from streamlit_lottie import st_lottie
-from streamlit_extras.switch_page_button import switch_page
+#from streamlit_extras.switch_page_button import switch_page #removed as per edit
 import os
 
 def render_hero_section():
@@ -35,7 +35,7 @@ def render_hero_section():
             help="Begin your personalized college guidance experience",
             use_container_width=True
         ):
-            switch_page("chat")
+            st.switch_page("chat")
 
 def render_key_features():
     """Render the key features section"""
@@ -70,7 +70,7 @@ def render_key_features():
 def render_navigation():
     """Render the navigation menu"""
     menu_items = {
-        "Home": "home",
+        "Home": "/",
         "Login": "login",
         "Resources": "resources",
         "Blog": "blog",
@@ -93,7 +93,11 @@ def render_navigation():
     for i, (label, page) in enumerate(menu_items.items()):
         with cols[i]:
             if st.button(label, key=f"nav-{page}", use_container_width=True):
-                switch_page(page)
+                # Use Streamlit's query parameters for navigation
+                if page == "/":
+                    st.switch_page("main.py")
+                else:
+                    st.switch_page(f"pages/{page}.py")
 
 def render_demo_mode_indicator():
     """Show demo mode banner"""
